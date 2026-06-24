@@ -576,16 +576,26 @@ tbody td:first-child{color:var(--text);font-weight:500}
 
 <!-- CUSTOMER MODAL -->
 <div class="modal-overlay" id="customerModal">
-  <div class="modal">
+  <div class="modal" style="max-width:500px">
     <button class="modal-close" onclick="closeModal('customerModal')">✕</button>
-    <div class="modal-title">Müşteri Ekle</div>
-    <div class="form-group" style="margin-bottom:13px"><label>Müşteri / Tesis Adı *</label><input type="text" id="mCustomerName" placeholder="ör. THY AO"></div>
-    <div class="form-group" style="margin-bottom:13px"><label>Konum</label><input type="text" id="mCustomerLoc" placeholder="ör. İstanbul, Sabiha Gökçen"></div>
-    <div class="form-group" style="margin-bottom:18px"><label>Notlar</label><input type="text" id="mCustomerNote" placeholder="Açıklama..."></div>
-    <div style="display:flex;gap:9px">
-      <button class="btn btn-primary" onclick="saveCustomer()">Kaydet</button>
-      <button class="btn btn-ghost" onclick="closeModal('customerModal')">İptal</button>
-      <button class="btn btn-danger" id="delCustomerBtn" style="display:none;margin-left:auto" onclick="deleteCustomer()">Sil</button>
+    <div class="modal-title">Müşteri Yönetimi</div>
+
+    <!-- Mevcut müşteriler listesi -->
+    <div style="margin-bottom:18px">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Mevcut Müşteriler</div>
+      <div id="customerList" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto"></div>
+    </div>
+
+    <!-- Yeni müşteri ekleme formu -->
+    <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">Yeni Müşteri Ekle</div>
+      <div class="form-group" style="margin-bottom:10px"><label>Müşteri / Tesis Adı *</label><input type="text" id="mCustomerName" placeholder="ör. THY AO"></div>
+      <div class="form-group" style="margin-bottom:10px"><label>Konum</label><input type="text" id="mCustomerLoc" placeholder="ör. İstanbul, Sabiha Gökçen"></div>
+      <div class="form-group" style="margin-bottom:14px"><label>Notlar</label><input type="text" id="mCustomerNote" placeholder="Açıklama..."></div>
+      <div style="display:flex;gap:9px">
+        <button class="btn btn-primary" onclick="saveCustomer()">+ Ekle</button>
+        <button class="btn btn-ghost" onclick="closeModal('customerModal')">Kapat</button>
+      </div>
     </div>
   </div>
 </div>
@@ -874,9 +884,61 @@ function buildSelects(){
 }
 function openModal(id){
   document.getElementById(id).classList.add('open');
-  if(id==='customerModal'){['mCustomerName','mCustomerLoc','mCustomerNote'].forEach(i=>document.getElementById(i).value='');document.getElementById('delCustomerBtn').style.display='none';}
+  if(id==='customerModal'){
+    ['mCustomerName','mCustomerLoc','mCustomerNote'].forEach(i=>document.getElementById(i).value='');
+    renderCustomerList();
+  }
   if(id==='labelEditModal'){ renderLabelEditFields(); }
   if(id==='kpiLabelEditModal'){ renderKpiLabelEditFields(); }
+}
+
+function renderCustomerList(){
+  const el = document.getElementById('customerList');
+  if(!el) return;
+  if(!S.customers.length){ el.innerHTML='<div style="color:var(--text3);font-size:13px">Henüz müşteri yok</div>'; return; }
+  el.innerHTML = S.customers.map(c=>{
+    const recCount = S.records.filter(r=>r.customerId===c.id).length;
+    const isActive = c.id === S.currentCid;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;border:1px solid ${isActive?'var(--primary)':'var(--border)'};background:${isActive?'rgba(0,119,182,0.05)':'var(--card2)'}">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px;color:var(--text)">${c.name}</div>
+        <div style="font-size:11px;color:var(--text3)">${c.loc||'—'} &nbsp;•&nbsp; ${recCount} kayıt</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 10px" onclick="selectCustomerFromModal('${c.id}')">
+        ${isActive?'✓ Seçili':'Seç'}
+      </button>
+      <button class="btn btn-danger btn-sm" style="font-size:11px;padding:4px 10px" onclick="deleteCustomerById('${c.id}','${c.name.replace(/'/g,"\\'")}')">
+        Sil
+      </button>
+    </div>`;
+  }).join('');
+}
+
+function selectCustomerFromModal(id){
+  S.currentCid = id;
+  document.getElementById('customerSelect').value = id;
+  renderCustomerList();
+  closeModal('customerModal');
+  if(activeTab==='dashboard') renderDashboard();
+  else if(activeTab==='grafikler') renderGrafiks();
+  else if(activeTab==='veri') renderTable();
+}
+
+function deleteCustomerById(id, name){
+  const recCount = S.records.filter(r=>r.customerId===id).length;
+  if(!confirm(`"${name}" müşterisi ve ${recCount} kaydı silinecek. Bu işlem geri alınamaz. Devam edilsin mi?`)) return;
+  if(S.customers.length <= 1){ toast('Son müşteri silinemez','error'); return; }
+  S.customers = S.customers.filter(c=>c.id!==id);
+  S.records   = S.records.filter(r=>r.customerId!==id);
+  if(S.currentCid === id) S.currentCid = S.customers[0].id;
+  save();
+  buildSelects();
+  renderCustomerList();
+  deleteCustomerFromDb(id);
+  toast(`"${name}" silindi`);
+  if(activeTab==='dashboard') renderDashboard();
+  else if(activeTab==='grafikler') renderGrafiks();
+  else if(activeTab==='veri') renderTable();
 }
 
 function renderKpiLabelEditFields(){
@@ -1028,8 +1090,7 @@ function exportTablePDF(){
   pw.document.close();
 }
 
-function saveCustomer(){const name=document.getElementById('mCustomerName').value.trim();if(!name){toast('Müşteri adı zorunlu','error');return;}const c={id:uid(),name,loc:document.getElementById('mCustomerLoc').value.trim(),note:document.getElementById('mCustomerNote').value.trim()};S.customers.push(c);S.currentCid=c.id;save();buildSelects();document.getElementById('customerSelect').value=c.id;closeModal('customerModal');toast('Müşteri eklendi ✓');saveCustomerToDb(c);}
-function deleteCustomer(){if(S.customers.length<=1){toast('Son müşteri silinemez','error');return;}const oldId=S.currentCid;S.customers=S.customers.filter(c=>c.id!==oldId);S.records=S.records.filter(r=>r.customerId!==oldId);S.currentCid=S.customers[0].id;save();buildSelects();closeModal('customerModal');toast('Müşteri silindi');deleteCustomerFromDb(oldId);if(activeTab==='dashboard')renderDashboard();}
+function saveCustomer(){const name=document.getElementById('mCustomerName').value.trim();if(!name){toast('Müşteri adı zorunlu','error');return;}const c={id:uid(),name,loc:document.getElementById('mCustomerLoc').value.trim(),note:document.getElementById('mCustomerNote').value.trim()};S.customers.push(c);S.currentCid=c.id;save();buildSelects();document.getElementById('customerSelect').value=c.id;renderCustomerList();toast('Müşteri eklendi ✓');saveCustomerToDb(c);['mCustomerName','mCustomerLoc','mCustomerNote'].forEach(i=>document.getElementById(i).value='');}
 
 
 // ── DATA HELPERS ──────────────────────────────────────────
@@ -2623,7 +2684,7 @@ function restoreData(event){
   const file = event.target.files[0];
   if(!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     try{
       const data = JSON.parse(e.target.result);
       if(!data.customers || !data.records){
@@ -2631,18 +2692,40 @@ function restoreData(event){
         return;
       }
       if(!confirm(`${data.customers.length} müşteri ve ${data.records.length} kayıt yüklenecek. Mevcut veriler silinecek. Devam edilsin mi?`)) return;
-      S.customers = data.customers;
-      S.records   = data.records;
+
+      showLoader(true);
+      S.customers  = data.customers;
+      S.records    = data.records;
       S.currentCid = S.customers[0]?.id || null;
-      save();
+      save(); // localStorage cache
+
+      // Supabase'e yaz — önce mevcut veriyi temizle, sonra yükle
+      try{
+        // Tüm kayıtları ve müşterileri upsert et
+        const CHUNK = 50; // Supabase batch limiti
+        for(let i=0; i<S.customers.length; i+=CHUNK){
+          const chunk = S.customers.slice(i,i+CHUNK);
+          await sb.from('customers').upsert(chunk.map(c=>({id:c.id,name:c.name,loc:c.loc||'',note:c.note||''})));
+        }
+        for(let i=0; i<S.records.length; i+=CHUNK){
+          const chunk = S.records.slice(i,i+CHUNK);
+          await sb.from('records').upsert(chunk.map(recToDb));
+        }
+        toast(`${data.records.length} kayıt Supabase'e yüklendi ✓`);
+      } catch(sbErr){
+        console.error('Supabase yükleme hatası:', sbErr);
+        toast('localStorage güncellendi, Supabase hatası: '+sbErr.message, 'error');
+      }
+
       buildSelects();
       if(activeTab==='dashboard') renderDashboard();
       else if(activeTab==='veri') renderTable();
-      toast(`${data.records.length} kayıt geri yüklendi ✓`);
     } catch(err){
       toast('Dosya okunamadı: ' + err.message, 'error');
+    } finally {
+      showLoader(false);
+      event.target.value = '';
     }
-    event.target.value = ''; // reset input
   };
   reader.readAsText(file);
 }

@@ -177,7 +177,7 @@ tbody td:first-child{color:var(--text);font-weight:500}
   <div style="margin-left:auto;display:flex;align-items:center;gap:10px;padding:0 16px">
     <span style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;white-space:nowrap">Müşteri:</span>
     <select id="customerSelect" onchange="onCustomerChange()" style="min-width:150px;font-weight:500;font-size:12px"></select>
-    <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:5px 10px" onclick="openModal('customerModal')">+ Ekle</button>
+    <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:5px 10px" onclick="openModal('customerModal')">👥 Müşteri Yönetimi</button>
     <div style="width:1px;height:18px;background:var(--border)"></div>
     <button class="btn btn-ghost btn-sm" onclick="backupData()" title="Tüm verileri JSON olarak indir" style="font-size:11px;padding:5px 10px">⬇ Yedek Al</button>
     <label class="btn btn-ghost btn-sm" style="font-size:11px;padding:5px 10px;cursor:pointer;margin:0" title="JSON yedeği geri yükle">
@@ -303,6 +303,31 @@ tbody td:first-child{color:var(--text);font-weight:500}
         <div class="chart-type-btns" data-key="dashRunt"></div>
       </div>
       <div class="chart-body tall"><canvas id="chartDashRunt"></canvas></div>
+    </div>
+  </div>
+  <!-- SATIR 4: Saatlik Makeup Verimi + Saatlik Blöf -->
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-bottom:14px">
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">Saatlik Makeup Verimi</div>
+          <div class="chart-sub">Kule başına saatlik su tüketimi (m³/sa)</div>
+        </div>
+        <div class="chart-legend" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;flex:1;justify-content:center;padding:0 8px"></div>
+        <div class="chart-type-btns" data-key="saatlikMakeup"></div>
+      </div>
+      <div class="chart-body tall"><canvas id="chartSaatlikMakeup"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">Saatlik Blöf Karşılaştırması</div>
+          <div class="chart-sub">Kule başına saatlik blöf miktarı (m³/sa)</div>
+        </div>
+        <div class="chart-legend" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;flex:1;justify-content:center;padding:0 8px"></div>
+        <div class="chart-type-btns" data-key="saatlikBlof"></div>
+      </div>
+      <div class="chart-body tall"><canvas id="chartSaatlikBlof"></canvas></div>
     </div>
   </div>
   <div class="table-card">
@@ -1411,9 +1436,7 @@ function renderDashboard(){
   window._dashRs = rs; // setDashType için global
 
   // Grafik tip state (dashboard)
-  if(!S.dashChartTypes) S.dashChartTypes={cons:'line',spct:'bar',blofFark:'bar',blofAzaltma:'bar',cond:'line',dashRunt:'bar'};
-
-  // Günlük Kazanç (₺) ve Tasarruf Oranı (%) hesapla — Toplam Kazanç (Make-up) üzerinden
+  if(!S.dashChartTypes) S.dashChartTypes={cons:'line',spct:'bar',blofFark:'bar',blofAzaltma:'bar',cond:'line',dashRunt:'bar',saatlikMakeup:'bar',saatlikBlof:'bar'};
   // Atıksu düşülmez — direkt toplam kazanç (refTuketim - hydroTuketim) kullanılır
   const birimFiyatLive = parseFloat(document.getElementById('suBirimFiyat')?.value)||0;
   const gunlukKazancTL = rs.map(r=>{
@@ -1426,8 +1449,7 @@ function renderDashboard(){
   });
   const gunlukTierColors = gunlukTasarrufOrani.map(tasarrufTierColor);
 
-  if(!S.dashChartTypes) S.dashChartTypes={cons:'line',spct:'bar',blofFark:'bar',blofAzaltma:'bar',cond:'line',dashRunt:'bar'};
-  if(!S.dashDataVisible) S.dashDataVisible={}; // true=göster, false/undefined=gizle
+  if(!S.dashChartTypes) S.dashChartTypes={cons:'line',spct:'bar',blofFark:'bar',blofAzaltma:'bar',cond:'line',dashRunt:'bar',saatlikMakeup:'bar',saatlikBlof:'bar'};
   const t=S.dashChartTypes;
 
   dc('cons');S.charts['cons']=new Chart(document.getElementById('chartConsumption'),{
@@ -1635,6 +1657,41 @@ function renderDashboard(){
       {label:'Kule-12 (saat)',  data:rs.map(r=>r.kule12SureFark), borderColor:'#6344b8',backgroundColor:t.dashRunt==='bar'?'rgba(99,68,184,0.55)':'rgba(99,68,184,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3},
       {label:'Hydroloop (saat)',data:rs.map(r=>r.hydroSureFark),  borderColor:'#0a8f63',backgroundColor:t.dashRunt==='bar'?'rgba(10,143,99,0.55)':'rgba(10,143,99,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3}
     ]},options:CO('dashRunt')});
+
+  // Saatlik Makeup Verimi = Tüketim (ton) / Çalışma Süresi Fark (saat)
+  // Sıfır veya null saat varsa null döndür (bölme hatası engellenir)
+  const kule11MakeupSaatlik = rs.map(r=>{
+    if(!r.kule11SureFark || r.kule11SureFark<=0 || r.hydroTuketim==null) return null;
+    return +(r.hydroTuketim / r.kule11SureFark).toFixed(4);
+  });
+  const kule12MakeupSaatlik = rs.map(r=>{
+    if(!r.kule12SureFark || r.kule12SureFark<=0 || r.refTuketim==null) return null;
+    return +(r.refTuketim / r.kule12SureFark).toFixed(4);
+  });
+
+  dc('saatlikMakeup');S.charts['saatlikMakeup']=new Chart(document.getElementById('chartSaatlikMakeup'),{
+    type:t.saatlikMakeup,data:{labels,datasets:[
+      {label:'Kule-11 (Hydroloop) m³/sa', data:kule11MakeupSaatlik, borderColor:'#0077b6', backgroundColor:t.saatlikMakeup==='bar'?'rgba(0,119,182,0.65)':'rgba(0,119,182,0.08)', tension:.3, pointRadius:3, fill:false, borderRadius:4},
+      {label:'Kule-12 (Referans) m³/sa',  data:kule12MakeupSaatlik, borderColor:'#c8334e', backgroundColor:t.saatlikMakeup==='bar'?'rgba(200,51,78,0.65)':'rgba(200,51,78,0.08)', tension:.3, pointRadius:3, fill:false, borderRadius:4}
+    ]},options:CO('saatlikMakeup')});
+
+  // Saatlik Blöf = Blöf miktarı (ton) / Çalışma Süresi Fark (saat)
+  // Kule-11: (hydroBlofFark + atiksuFark) / kule11SureFark
+  // Kule-12: refBlofFark / kule12SureFark
+  const kule11BlofSaatlik = rs.map(r=>{
+    if(!r.kule11SureFark || r.kule11SureFark<=0 || r.hydroBlofFark==null) return null;
+    return +((r.hydroBlofFark + (r.atiksuFark||0)) / r.kule11SureFark).toFixed(4);
+  });
+  const kule12BlofSaatlik = rs.map(r=>{
+    if(!r.kule12SureFark || r.kule12SureFark<=0 || r.refBlofFark==null) return null;
+    return +(r.refBlofFark / r.kule12SureFark).toFixed(4);
+  });
+
+  dc('saatlikBlof');S.charts['saatlikBlof']=new Chart(document.getElementById('chartSaatlikBlof'),{
+    type:t.saatlikBlof,data:{labels,datasets:[
+      {label:'Kule-11 Blöf+Atıksu m³/sa', data:kule11BlofSaatlik, borderColor:'#0077b6', backgroundColor:t.saatlikBlof==='bar'?'rgba(0,119,182,0.65)':'rgba(0,119,182,0.08)', tension:.3, pointRadius:3, fill:false, borderRadius:4},
+      {label:'Kule-12 Blöf m³/sa',          data:kule12BlofSaatlik, borderColor:'#c8334e', backgroundColor:t.saatlikBlof==='bar'?'rgba(200,51,78,0.65)':'rgba(200,51,78,0.08)', tension:.3, pointRadius:3, fill:false, borderRadius:4}
+    ]},options:CO('saatlikBlof')});
 
   setTimeout(renderTypeBtns, 80);
   initKpiDrag();
@@ -2007,7 +2064,7 @@ function exportCSV(){
 // Her grup bağımsız state tutar
 
 const SYNC = {
-  dash: { group: ['cons','spct','blofFark','blofAzaltma','cond','dashRunt'], selIdx: null },
+  dash: { group: ['cons','spct','blofFark','blofAzaltma','cond','dashRunt','saatlikMakeup','saatlikBlof'], selIdx: null },
   graf: { group: ['cumS','blof','prod','runt'], selIdx: null }
 };
 
@@ -2303,6 +2360,18 @@ function renderSingleDashChart(key){
           {label:'Kule-11 (saat)',  data:rs.map(r=>r.kule11SureFark), borderColor:'#0077b6',backgroundColor:t.dashRunt==='bar'?'rgba(0,119,182,0.55)':'rgba(0,119,182,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3},
           {label:'Kule-12 (saat)',  data:rs.map(r=>r.kule12SureFark), borderColor:'#6344b8',backgroundColor:t.dashRunt==='bar'?'rgba(99,68,184,0.55)':'rgba(99,68,184,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3},
           {label:'Hydroloop (saat)',data:rs.map(r=>r.hydroSureFark),  borderColor:'#0a8f63',backgroundColor:t.dashRunt==='bar'?'rgba(10,143,99,0.55)':'rgba(10,143,99,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3}
+        ]};
+      case 'saatlikMakeup': return {
+        type: t.saatlikMakeup,
+        datasets:[
+          {label:'Kule-11 (Hydroloop) m³/sa', data:rs.map(r=>(!r.kule11SureFark||r.kule11SureFark<=0||r.hydroTuketim==null)?null:+(r.hydroTuketim/r.kule11SureFark).toFixed(4)), borderColor:'#0077b6',backgroundColor:t.saatlikMakeup==='bar'?'rgba(0,119,182,0.65)':'rgba(0,119,182,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:4},
+          {label:'Kule-12 (Referans) m³/sa',  data:rs.map(r=>(!r.kule12SureFark||r.kule12SureFark<=0||r.refTuketim==null)?null:+(r.refTuketim/r.kule12SureFark).toFixed(4)),  borderColor:'#c8334e',backgroundColor:t.saatlikMakeup==='bar'?'rgba(200,51,78,0.65)':'rgba(200,51,78,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:4}
+        ]};
+      case 'saatlikBlof': return {
+        type: t.saatlikBlof,
+        datasets:[
+          {label:'Kule-11 Blöf+Atıksu m³/sa', data:rs.map(r=>(!r.kule11SureFark||r.kule11SureFark<=0||r.hydroBlofFark==null)?null:+((r.hydroBlofFark+(r.atiksuFark||0))/r.kule11SureFark).toFixed(4)), borderColor:'#0077b6',backgroundColor:t.saatlikBlof==='bar'?'rgba(0,119,182,0.65)':'rgba(0,119,182,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:4},
+          {label:'Kule-12 Blöf m³/sa',          data:rs.map(r=>(!r.kule12SureFark||r.kule12SureFark<=0||r.refBlofFark==null)?null:+(r.refBlofFark/r.kule12SureFark).toFixed(4)),           borderColor:'#c8334e',backgroundColor:t.saatlikBlof==='bar'?'rgba(200,51,78,0.65)':'rgba(200,51,78,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:4}
         ]};
       default: return null;
     }
@@ -3044,6 +3113,14 @@ function buildDatasets(key, rs, typ){
       {label:'Kule-12 (saat)',data:rs.map(r=>r.kule12SureFark),borderColor:'#6344b8',backgroundColor:typ==='bar'?'rgba(99,68,184,0.55)':'rgba(99,68,184,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3},
       {label:'Hydroloop (saat)',data:rs.map(r=>r.hydroSureFark),borderColor:'#0a8f63',backgroundColor:typ==='bar'?'rgba(10,143,99,0.55)':'rgba(10,143,99,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3}
     ]};
+    case 'saatlikMakeup': return {type:typ, datasets:[
+      {label:'Kule-11 (Hydroloop) m³/sa', data:rs.map(r=>(!r.kule11SureFark||r.kule11SureFark<=0||r.hydroTuketim==null)?null:+(r.hydroTuketim/r.kule11SureFark).toFixed(4)), borderColor:'#0077b6',backgroundColor:typ==='bar'?'rgba(0,119,182,0.65)':'rgba(0,119,182,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:4},
+      {label:'Kule-12 (Referans) m³/sa',  data:rs.map(r=>(!r.kule12SureFark||r.kule12SureFark<=0||r.refTuketim==null)?null:+(r.refTuketim/r.kule12SureFark).toFixed(4)),  borderColor:'#c8334e',backgroundColor:typ==='bar'?'rgba(200,51,78,0.65)':'rgba(200,51,78,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:4}
+    ]};
+    case 'saatlikBlof': return {type:typ, datasets:[
+      {label:'Kule-11 Blöf+Atıksu m³/sa', data:rs.map(r=>(!r.kule11SureFark||r.kule11SureFark<=0||r.hydroBlofFark==null)?null:+((r.hydroBlofFark+(r.atiksuFark||0))/r.kule11SureFark).toFixed(4)), borderColor:'#0077b6',backgroundColor:typ==='bar'?'rgba(0,119,182,0.65)':'rgba(0,119,182,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:4},
+      {label:'Kule-12 Blöf m³/sa',          data:rs.map(r=>(!r.kule12SureFark||r.kule12SureFark<=0||r.refBlofFark==null)?null:+(r.refBlofFark/r.kule12SureFark).toFixed(4)),           borderColor:'#c8334e',backgroundColor:typ==='bar'?'rgba(200,51,78,0.65)':'rgba(200,51,78,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:4}
+    ]};
     default: return null;
   }
 }
@@ -3254,3 +3331,4 @@ window.addEventListener('resize', ()=>{
 </script>
 </body>
 </html>
+

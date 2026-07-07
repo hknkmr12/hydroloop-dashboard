@@ -312,6 +312,7 @@ tbody td:first-child{color:var(--text);font-weight:500}
         <div>
           <div class="chart-title">Saatlik Makeup Verimi</div>
           <div class="chart-sub">Kule başına saatlik su tüketimi (m³/sa)</div>
+          <div id="saatlikMakeupSummary" style="margin-top:5px"></div>
         </div>
         <div class="chart-legend" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;flex:1;justify-content:center;padding:0 8px"></div>
         <div class="chart-type-btns" data-key="saatlikMakeup"></div>
@@ -323,6 +324,7 @@ tbody td:first-child{color:var(--text);font-weight:500}
         <div>
           <div class="chart-title">Saatlik Blöf Karşılaştırması</div>
           <div class="chart-sub">Kule başına saatlik blöf miktarı (m³/sa)</div>
+          <div id="saatlikBlofSummary" style="margin-top:5px"></div>
         </div>
         <div class="chart-legend" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;flex:1;justify-content:center;padding:0 8px"></div>
         <div class="chart-type-btns" data-key="saatlikBlof"></div>
@@ -1693,6 +1695,14 @@ function renderDashboard(){
       {label:'Kule-12 Blöf m³/sa',          data:kule12BlofSaatlik, borderColor:'#c8334e', backgroundColor:t.saatlikBlof==='bar'?'rgba(200,51,78,0.65)':'rgba(200,51,78,0.08)', tension:.3, pointRadius:3, fill:false, borderRadius:4}
     ]},options:CO('saatlikBlof')});
 
+  // Global veri kaydet (syncHighlight için)
+  window._saatlikMakeupK11 = kule11MakeupSaatlik;
+  window._saatlikMakeupK12 = kule12MakeupSaatlik;
+  window._saatlikBlofK11   = kule11BlofSaatlik;
+  window._saatlikBlofK12   = kule12BlofSaatlik;
+  updateSaatlikMakeupSummary(null);
+  updateSaatlikBlofSummary(null);
+
   setTimeout(renderTypeBtns, 80);
   initKpiDrag();
   document.getElementById('lastCount').textContent=rs.length+' kayıt';
@@ -2236,6 +2246,8 @@ function syncHighlight(groupKey, selIdx){
       updateBlofSummary(selIdx);
       updateConsSummary(selIdx);
       updateKazancSummary(selIdx);
+      updateSaatlikMakeupSummary(selIdx);
+      updateSaatlikBlofSummary(selIdx);
     }
   }
 }
@@ -2731,6 +2743,81 @@ function updateBlofSummary(selIdx){
       ✓ Toplam Blöf Tasarrufu: <b>${tot.toFixed(3)}</b>${pct!=null?' - %'+trPct(pct):''}
     </span>`;
   }
+}
+
+// ── SAATLİK MAKEUP VERİMİ SAYACI ────────────────────────
+function updateSaatlikMakeupSummary(selIdx){
+  const el = document.getElementById('saatlikMakeupSummary');
+  if(!el) return;
+  const k11 = window._saatlikMakeupK11;
+  const k12 = window._saatlikMakeupK12;
+  if(!k11 || !k12) return;
+
+  // Yardımcı: geçerli değerlerin ortalaması
+  const ort = arr => { const v=arr.filter(x=>x!=null); return v.length ? v.reduce((s,x)=>s+x,0)/v.length : null; };
+
+  let k11Val, k12Val, etiket;
+
+  if(selIdx !== null && selIdx !== undefined){
+    k11Val = k11[selIdx];
+    k12Val = k12[selIdx];
+    etiket = 'Günlük Saatlik Makeup';
+  } else {
+    k11Val = ort(k11);
+    k12Val = ort(k12);
+    etiket = 'Ortalama Saatlik Makeup';
+  }
+
+  if(k11Val == null && k12Val == null){ el.innerHTML = ''; return; }
+
+  // Fark yüzdesi: (K12 - K11) / K12 × 100 → pozitifse K11 daha verimli (daha az su/saat)
+  const diff = (k11Val!=null && k12Val!=null && k12Val!==0) ? ((k12Val-k11Val)/k12Val*100) : null;
+  const diffTxt = diff!=null ? (diff>=0?' <b style="color:#059669">▼%'+trPct(Math.abs(diff))+'</b>':' <b style="color:#c8334e">▲%'+trPct(Math.abs(diff))+'</b>') : '';
+
+  el.innerHTML = `<span style="font-size:11px;font-weight:700;color:#0077b6;background:#e8f4fd;border:1px solid #a0c8e8;border-radius:6px;padding:3px 10px;display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span>💧 ${etiket}:</span>
+    <span>K-11 <b>${k11Val!=null?k11Val.toFixed(3):'-'}</b></span>
+    <span style="color:var(--border)">|</span>
+    <span>K-12 <b>${k12Val!=null?k12Val.toFixed(3):'-'}</b> m³/sa${diffTxt}</span>
+  </span>`;
+}
+
+// ── SAATLİK BLÖF SAYACI ──────────────────────────────────
+function updateSaatlikBlofSummary(selIdx){
+  const el = document.getElementById('saatlikBlofSummary');
+  if(!el) return;
+  const k11 = window._saatlikBlofK11;
+  const k12 = window._saatlikBlofK12;
+  if(!k11 || !k12) return;
+
+  const ort = arr => { const v=arr.filter(x=>x!=null); return v.length ? v.reduce((s,x)=>s+x,0)/v.length : null; };
+
+  let k11Val, k12Val, etiket;
+
+  if(selIdx !== null && selIdx !== undefined){
+    k11Val = k11[selIdx];
+    k12Val = k12[selIdx];
+    etiket = 'Günlük Saatlik Blöf';
+  } else {
+    k11Val = ort(k11);
+    k12Val = ort(k12);
+    etiket = 'Ortalama Saatlik Blöf';
+  }
+
+  if(k11Val == null && k12Val == null){ el.innerHTML = ''; return; }
+
+  // Fark: (K12 - K11) / K12 × 100 → pozitifse K11 daha az blöf (tasarruf var)
+  const diff = (k11Val!=null && k12Val!=null && k12Val!==0) ? ((k12Val-k11Val)/k12Val*100) : null;
+  const diffColor = diff!=null && diff>0 ? '#059669' : '#c8334e';
+  const diffIcon  = diff!=null && diff>0 ? '▼' : '▲';
+  const diffTxt   = diff!=null ? ` <b style="color:${diffColor}">${diffIcon}%${trPct(Math.abs(diff))}</b>` : '';
+
+  el.innerHTML = `<span style="font-size:11px;font-weight:700;color:#6344b8;background:#f0ecfd;border:1px solid #c4b5f4;border-radius:6px;padding:3px 10px;display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span>⬇ ${etiket}:</span>
+    <span>K-11 <b>${k11Val!=null?k11Val.toFixed(4):'-'}</b></span>
+    <span style="color:var(--border)">|</span>
+    <span>K-12 <b>${k12Val!=null?k12Val.toFixed(4):'-'}</b> m³/sa${diffTxt}</span>
+  </span>`;
 }
 
 // ── YEDEK AL / GERİ YÜKLE ────────────────────────────────
@@ -3331,4 +3418,3 @@ window.addEventListener('resize', ()=>{
 </script>
 </body>
 </html>
-

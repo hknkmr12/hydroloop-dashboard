@@ -751,7 +751,9 @@ function getMetrics(){
     {k:'_sbK12',l:'K-12 Saatlik Blöf (m³/sa)',computed:true},
     {k:'_toplamBlofTas',l:'Toplam Blöf Tasarrufu (ton)',computed:true},
     {k:'_toplamBlofTasPct',l:'Blöf Tasarrufu % (Ref Blöf Fark\'a göre)',computed:true},
-    {k:'_tasarrufPct',l:'Su Tasarrufu % (Ref Tüketim\'e göre)',computed:true}
+    {k:'_tasarrufPct',l:'Su Tasarrufu % (Ref Tüketim\'e göre)',computed:true},
+    {k:'_makeupFarkPct',l:'Saatlik Makeup Verim Fark % (K12−K11)/K12',computed:true},
+    {k:'_blofFarkPct',l:'Saatlik Blöf Verim Fark % (K12−K11)/K12',computed:true}
   ];
 }
 
@@ -768,6 +770,16 @@ function computedMetric(key, r){
       return (t!=null&&r.refBlofFark)?+(t/r.refBlofFark*100).toFixed(2):null;
     }
     case '_tasarrufPct': return (r.kazanc!=null&&r.refTuketim&&r.refTuketim>0)?+(r.kazanc/r.refTuketim*100).toFixed(2):null;
+    case '_makeupFarkPct': {
+      const sm11=(r.kule11SureFark&&r.kule11SureFark>0&&r.hydroTuketim!=null)?r.hydroTuketim/r.kule11SureFark:null;
+      const sm12=(r.kule12SureFark&&r.kule12SureFark>0&&r.refTuketim!=null)?r.refTuketim/r.kule12SureFark:null;
+      return (sm11!=null&&sm12!=null&&sm12!==0)?+((sm12-sm11)/sm12*100).toFixed(2):null;
+    }
+    case '_blofFarkPct': {
+      const sb11=(r.kule11SureFark&&r.kule11SureFark>0&&r.hydroBlofFark!=null)?(r.hydroBlofFark+(r.atiksuFark||0))/r.kule11SureFark:null;
+      const sb12=(r.kule12SureFark&&r.kule12SureFark>0&&r.refBlofFark!=null)?r.refBlofFark/r.kule12SureFark:null;
+      return (sb11!=null&&sb12!=null&&sb12!==0)?+((sb12-sb11)/sb12*100).toFixed(2):null;
+    }
     default: return r[key]??null;
   }
 }

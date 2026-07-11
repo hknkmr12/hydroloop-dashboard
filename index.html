@@ -595,6 +595,15 @@ tbody td:first-child{color:var(--text);font-weight:500}
     </div>
 
     <hr class="divider">
+    <div class="form-section-title">Açıklama</div>
+    <div class="form-group" style="margin-bottom:14px">
+      <label>Günlük Açıklama / Not</label>
+      <textarea id="fAciklama" rows="3" placeholder="Bu güne ait özel durum, gözlem veya not..."
+        style="width:100%;padding:9px 13px;background:var(--card2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;resize:vertical;transition:border-color .2s"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+    </div>
+
+    <hr class="divider">
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="saveRecord()">💾 Kaydet</button>
       <button class="btn btn-ghost" onclick="cancelEdit()">İptal</button>
@@ -786,7 +795,8 @@ function recToDb(r){
     atiksu:r.atiksu, atiksu_fark:r.atiksuFark,
     kule11_sure:r.kule11Sure, kule11_sure_fark:r.kule11SureFark,
     kule12_sure:r.kule12Sure, kule12_sure_fark:r.kule12SureFark,
-    hydro_sure:r.hydroSure, hydro_sure_fark:r.hydroSureFark
+    hydro_sure:r.hydroSure, hydro_sure_fark:r.hydroSureFark,
+    aciklama:r.aciklama||null
   };
 }
 function recFromDb(r){
@@ -802,7 +812,8 @@ function recFromDb(r){
     atiksu:r.atiksu, atiksuFark:r.atiksu_fark,
     kule11Sure:r.kule11_sure, kule11SureFark:r.kule11_sure_fark,
     kule12Sure:r.kule12_sure, kule12SureFark:r.kule12_sure_fark,
-    hydroSure:r.hydro_sure, hydroSureFark:r.hydro_sure_fark
+    hydroSure:r.hydro_sure, hydroSureFark:r.hydro_sure_fark,
+    aciklama:r.aciklama||null
   };
 }
 
@@ -2006,7 +2017,10 @@ const TABLE_COLS = [
   {key:'toplamBlofTasarrufuYuzde',custom:true},
   {key:'kule11SureFark',custom:true},{key:'kule12SureFark',custom:true},{key:'hydroSureFark',custom:true},
   {key:'saatlikMakeupK11',custom:true},{key:'saatlikMakeupK12',custom:true},
-  {key:'saatlikBlofK11',custom:true},{key:'saatlikBlofK12',custom:true}
+  {key:'makeupVerimFark',custom:true},{key:'makeupVerimFarkPct',custom:true},
+  {key:'saatlikBlofK11',custom:true},{key:'saatlikBlofK12',custom:true},
+  {key:'blofVerimFark',custom:true},{key:'blofVerimFarkPct',custom:true},
+  {key:'aciklama',custom:true}
 ];
 
 function customColLabel(key){
@@ -2022,8 +2036,13 @@ function customColLabel(key){
     case 'hydroSureFark': return 'Hydroloop Süre Fark (sa)';
     case 'saatlikMakeupK11': return 'K-11 Makeup m³/sa';
     case 'saatlikMakeupK12': return 'K-12 Makeup m³/sa';
+    case 'makeupVerimFark': return 'Makeup Verim Fark (m³/sa)';
+    case 'makeupVerimFarkPct': return 'Makeup Verim Fark %';
     case 'saatlikBlofK11': return 'K-11 Blöf m³/sa';
     case 'saatlikBlofK12': return 'K-12 Blöf m³/sa';
+    case 'blofVerimFark': return 'Blöf Verim Fark (m³/sa)';
+    case 'blofVerimFarkPct': return 'Blöf Verim Fark %';
+    case 'aciklama': return 'Açıklama';
     default: return key;
   }
 }
@@ -2050,6 +2069,16 @@ function renderTable(){
       const tbt = (r.refBlofFark!=null && r.hydroBlofFark!=null) ? (r.refBlofFark - r.hydroBlofFark - (r.atiksuFark||0)) : null;
       return (tbt!=null && r.refBlofFark) ? tbt/r.refBlofFark : 0;
     }
+    if(S.sortCol==='makeupVerimFark'){
+      const a=(r.kule11SureFark&&r.kule11SureFark>0&&r.hydroTuketim!=null)?r.hydroTuketim/r.kule11SureFark:null;
+      const b=(r.kule12SureFark&&r.kule12SureFark>0&&r.refTuketim!=null)?r.refTuketim/r.kule12SureFark:null;
+      return (a!=null&&b!=null)?b-a:0;
+    }
+    if(S.sortCol==='blofVerimFark'){
+      const a=(r.kule11SureFark&&r.kule11SureFark>0&&r.hydroBlofFark!=null)?(r.hydroBlofFark+(r.atiksuFark||0))/r.kule11SureFark:null;
+      const b=(r.kule12SureFark&&r.kule12SureFark>0&&r.refBlofFark!=null)?r.refBlofFark/r.kule12SureFark:null;
+      return (a!=null&&b!=null)?b-a:0;
+    }
     if(S.sortCol==='saatlikMakeupK11') return (r.kule11SureFark&&r.kule11SureFark>0&&r.hydroTuketim!=null)?r.hydroTuketim/r.kule11SureFark:0;
     if(S.sortCol==='saatlikMakeupK12') return (r.kule12SureFark&&r.kule12SureFark>0&&r.refTuketim!=null)?r.refTuketim/r.kule12SureFark:0;
     if(S.sortCol==='saatlikBlofK11') return (r.kule11SureFark&&r.kule11SureFark>0&&r.hydroBlofFark!=null)?(r.hydroBlofFark+(r.atiksuFark||0))/r.kule11SureFark:0;
@@ -2071,7 +2100,13 @@ function renderTable(){
     const smK12 = (r.kule12SureFark&&r.kule12SureFark>0&&r.refTuketim!=null) ? +(r.refTuketim/r.kule12SureFark).toFixed(4) : null;
     const sbK11 = (r.kule11SureFark&&r.kule11SureFark>0&&r.hydroBlofFark!=null) ? +((r.hydroBlofFark+(r.atiksuFark||0))/r.kule11SureFark).toFixed(4) : null;
     const sbK12 = (r.kule12SureFark&&r.kule12SureFark>0&&r.refBlofFark!=null) ? +(r.refBlofFark/r.kule12SureFark).toFixed(4) : null;
-    return `<tr><td>${fmtD(r.tarih)}</td><td>${fmt(r.hydroSayac,4)}</td><td>${fmt(r.refSayac,4)}</td><td>${fmt(r.hydroTuketim,4)}</td><td>${fmt(r.refTuketim,4)}</td><td class="${(r.kazanc||0)>=0?'positive':'negative'}">${fmt(r.kazanc,4)}</td><td>${pct(canliYuzde)}</td><td>${fmt(r.hydroIletk,0)}</td><td>${fmt(r.refIletk,0)}</td><td>${fmt(r.hydroBlof,4)}</td><td>${fmt(r.refBlof,4)}</td><td class="new-col">${fmt(r.hydroBlofFark,4)}</td><td class="new-col">${fmt(r.refBlofFark,4)}</td><td>${fmt(r.uretim,4)}</td><td class="new-col">${fmt(r.uretimFark,4)}</td><td>${fmt(r.atiksu,4)}</td><td class="new-col">${fmt(r.atiksuFark,4)}</td><td class="new-col">${fmt(toplamBlofTasarrufu,4)}</td><td class="new-col">${pct(toplamBlofTasarrufuYuzde)}</td><td>${fmt(r.kule11SureFark,2)}</td><td>${fmt(r.kule12SureFark,2)}</td><td>${fmt(r.hydroSureFark,4)}</td><td class="new-col">${fmt(smK11,4)}</td><td class="new-col">${fmt(smK12,4)}</td><td class="new-col">${fmt(sbK11,4)}</td><td class="new-col">${fmt(sbK12,4)}</td><td><button class="btn btn-ghost btn-sm" onclick="editRecord('${r.id}')">✏️</button></td></tr>`;
+    // Verim farkları: K12 - K11 (pozitif = K11 daha az tüketiyor / daha az blöf yapıyor = Hydroloop avantajlı)
+    const makeupFark    = (smK11!=null&&smK12!=null) ? +(smK12-smK11).toFixed(4) : null;
+    const makeupFarkPct = (makeupFark!=null&&smK12&&smK12!==0) ? +(makeupFark/smK12*100).toFixed(2) : null;
+    const blofFarkV     = (sbK11!=null&&sbK12!=null) ? +(sbK12-sbK11).toFixed(4) : null;
+    const blofFarkVPct  = (blofFarkV!=null&&sbK12&&sbK12!==0) ? +(blofFarkV/sbK12*100).toFixed(2) : null;
+    const posneg = v => v!=null?(v>=0?'positive':'negative'):'';
+    return `<tr><td>${fmtD(r.tarih)}</td><td>${fmt(r.hydroSayac,4)}</td><td>${fmt(r.refSayac,4)}</td><td>${fmt(r.hydroTuketim,4)}</td><td>${fmt(r.refTuketim,4)}</td><td class="${(r.kazanc||0)>=0?'positive':'negative'}">${fmt(r.kazanc,4)}</td><td>${pct(canliYuzde)}</td><td>${fmt(r.hydroIletk,0)}</td><td>${fmt(r.refIletk,0)}</td><td>${fmt(r.hydroBlof,4)}</td><td>${fmt(r.refBlof,4)}</td><td class="new-col">${fmt(r.hydroBlofFark,4)}</td><td class="new-col">${fmt(r.refBlofFark,4)}</td><td>${fmt(r.uretim,4)}</td><td class="new-col">${fmt(r.uretimFark,4)}</td><td>${fmt(r.atiksu,4)}</td><td class="new-col">${fmt(r.atiksuFark,4)}</td><td class="new-col">${fmt(toplamBlofTasarrufu,4)}</td><td class="new-col">${pct(toplamBlofTasarrufuYuzde)}</td><td>${fmt(r.kule11SureFark,2)}</td><td>${fmt(r.kule12SureFark,2)}</td><td>${fmt(r.hydroSureFark,4)}</td><td class="new-col">${fmt(smK11,4)}</td><td class="new-col">${fmt(smK12,4)}</td><td class="${posneg(makeupFark)}">${fmt(makeupFark,4)}</td><td class="${posneg(makeupFarkPct)}">${makeupFarkPct!=null?makeupFarkPct+'%':'-'}</td><td class="new-col">${fmt(sbK11,4)}</td><td class="new-col">${fmt(sbK12,4)}</td><td class="${posneg(blofFarkV)}">${fmt(blofFarkV,4)}</td><td class="${posneg(blofFarkVPct)}">${blofFarkVPct!=null?blofFarkVPct+'%':'-'}</td><td style="max-width:180px;white-space:normal;font-size:11px;color:var(--text2)">${r.aciklama||''}</td><td><button class="btn btn-ghost btn-sm" onclick="editRecord('${r.id}')">✏️</button></td></tr>`;
   }).join('');
   let pg=`<span>${rs.length} kayıt</span><div style="margin-left:auto;display:flex;gap:4px"><button class="page-btn" onclick="goPage(${S.page-1})">‹</button>`;
   for(let i=1;i<=pages;i++){if(i===1||i===pages||Math.abs(i-S.page)<=2)pg+=`<button class="page-btn${i===S.page?' active':''}" onclick="goPage(${i})">${i}</button>`;else if(Math.abs(i-S.page)===3)pg+=`<span style="color:var(--text3);padding:4px">…</span>`;}
@@ -2156,18 +2191,20 @@ function editRecord(id){
   document.getElementById('deleteBtn').style.display='';
   const f={fTarih:r.tarih,fHydroSayac:r.hydroSayac,fRefSayac:r.refSayac,fHydroTuketim:r.hydroTuketim,fRefTuketim:r.refTuketim,fKazanc:r.kazanc,fYuzde:r.yuzdeKazanc,fHydroBlof:r.hydroBlof,fHydroBlofFark:r.hydroBlofFark,fRefBlof:r.refBlof,fRefBlofFark:r.refBlofFark,fHydroIletk:r.hydroIletk,fRefIletk:r.refIletk,fUretim:r.uretim,fUretimFark:r.uretimFark,fAtiksu:r.atiksu,fAtiksuFark:r.atiksuFark,fKule11Sure:r.kule11Sure,fKule11SureFark:r.kule11SureFark,fKule12Sure:r.kule12Sure,fKule12SureFark:r.kule12SureFark,fHydroSure:r.hydroSure,fHydroSureFark:r.hydroSureFark};
   for(const[k,v]of Object.entries(f)){const el=document.getElementById(k);if(el)el.value=v!=null?v:'';}
+  const acEl=document.getElementById('fAciklama');if(acEl)acEl.value=r.aciklama||'';
+  for(const[k,v]of Object.entries(f)){const el=document.getElementById(k);if(el)el.value=v!=null?v:'';}
   onFormChange();
 }
 function cancelEdit(){S.editingId=null;document.getElementById('editingBadge').style.display='none';document.getElementById('deleteBtn').style.display='none';clearForm();}
 function clearForm(){
-  ['fTarih','fHydroSayac','fRefSayac','fHydroTuketim','fRefTuketim','fKazanc','fYuzde','fHydroBlof','fHydroBlofFark','fRefBlof','fRefBlofFark','fHydroIletk','fRefIletk','fUretim','fUretimFark','fAtiksu','fAtiksuFark','fKule11Sure','fKule11SureFark','fKule12Sure','fKule12SureFark','fHydroSure','fHydroSureFark'].forEach(id=>document.getElementById(id).value='');
+  ['fTarih','fHydroSayac','fRefSayac','fHydroTuketim','fRefTuketim','fKazanc','fYuzde','fHydroBlof','fHydroBlofFark','fRefBlof','fRefBlofFark','fHydroIletk','fRefIletk','fUretim','fUretimFark','fAtiksu','fAtiksuFark','fKule11Sure','fKule11SureFark','fKule12Sure','fKule12SureFark','fHydroSure','fHydroSureFark','fAciklama'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   ['noteHydroTuketim','noteRefTuketim','noteHydroBlofFark','noteRefBlofFark','noteUretimFark','noteAtiksuFark','noteKule11SureFark','noteKule12SureFark','noteHydroSureFark'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='';});
   document.getElementById('prevRecordBox').style.display='none';
 }
 function saveRecord(){
   const tarih=document.getElementById('fTarih').value;
   if(!tarih){toast('Tarih zorunlu','error');return;}
-  const rec={customerId:S.currentCid,tarih,hydroSayac:nv('fHydroSayac'),refSayac:nv('fRefSayac'),hydroTuketim:nv('fHydroTuketim'),refTuketim:nv('fRefTuketim'),kazanc:nv('fKazanc'),yuzdeKazanc:nv('fYuzde'),hydroBlof:nv('fHydroBlof'),hydroBlofFark:nv('fHydroBlofFark'),refBlof:nv('fRefBlof'),refBlofFark:nv('fRefBlofFark'),hydroIletk:nv('fHydroIletk'),refIletk:nv('fRefIletk'),uretim:nv('fUretim'),uretimFark:nv('fUretimFark'),atiksu:nv('fAtiksu'),atiksuFark:nv('fAtiksuFark'),kule11Sure:nv('fKule11Sure'),kule11SureFark:nv('fKule11SureFark'),kule12Sure:nv('fKule12Sure'),kule12SureFark:nv('fKule12SureFark'),hydroSure:nv('fHydroSure'),hydroSureFark:nv('fHydroSureFark')};
+  const rec={customerId:S.currentCid,tarih,hydroSayac:nv('fHydroSayac'),refSayac:nv('fRefSayac'),hydroTuketim:nv('fHydroTuketim'),refTuketim:nv('fRefTuketim'),kazanc:nv('fKazanc'),yuzdeKazanc:nv('fYuzde'),hydroBlof:nv('fHydroBlof'),hydroBlofFark:nv('fHydroBlofFark'),refBlof:nv('fRefBlof'),refBlofFark:nv('fRefBlofFark'),hydroIletk:nv('fHydroIletk'),refIletk:nv('fRefIletk'),uretim:nv('fUretim'),uretimFark:nv('fUretimFark'),atiksu:nv('fAtiksu'),atiksuFark:nv('fAtiksuFark'),kule11Sure:nv('fKule11Sure'),kule11SureFark:nv('fKule11SureFark'),kule12Sure:nv('fKule12Sure'),kule12SureFark:nv('fKule12SureFark'),hydroSure:nv('fHydroSure'),hydroSureFark:nv('fHydroSureFark'),aciklama:document.getElementById('fAciklama').value.trim()||null};
   if(S.editingId){
     const idx=S.records.findIndex(r=>r.id===S.editingId);
     S.records[idx]={...S.records[idx],...rec};

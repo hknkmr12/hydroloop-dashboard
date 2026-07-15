@@ -807,8 +807,9 @@ function recToDb(r){
     atiksu:r.atiksu, atiksu_fark:r.atiksuFark,
     kule11_sure:r.kule11Sure, kule11_sure_fark:r.kule11SureFark,
     kule12_sure:r.kule12Sure, kule12_sure_fark:r.kule12SureFark,
-    hydro_sure:r.hydroSure, hydro_sure_fark:r.hydroSureFark,
-    aciklama:r.aciklama||null
+    hydro_sure:r.hydroSure, hydro_sure_fark:r.hydroSureFark
+    // aciklama: Supabase'de sütun oluşturulduktan sonra açılacak
+    // ALTER TABLE records ADD COLUMN IF NOT EXISTS aciklama text;
   };
 }
 function recFromDb(r){
@@ -831,16 +832,20 @@ function recFromDb(r){
 
 // save: sadece tek kayıt/müşteri upsert — tüm veriyi değil
 async function saveCustomerToDb(c){
-  await sb.from('customers').upsert({id:c.id,name:c.name,loc:c.loc||'',note:c.note||''});
+  const {error} = await sb.from('customers').upsert({id:c.id,name:c.name,loc:c.loc||'',note:c.note||''});
+  if(error){ console.error('Müşteri kaydedilemedi:',error); toast('Supabase hatası: '+error.message,'error'); }
 }
 async function saveRecordToDb(r){
-  await sb.from('records').upsert(recToDb(r));
+  const {error} = await sb.from('records').upsert(recToDb(r));
+  if(error){ console.error('Kayıt kaydedilemedi:',error); toast('Supabase hatası: '+error.message,'error'); }
 }
 async function deleteRecordFromDb(id){
-  await sb.from('records').delete().eq('id',id);
+  const {error} = await sb.from('records').delete().eq('id',id);
+  if(error) console.error('Silme hatası:',error);
 }
 async function deleteCustomerFromDb(id){
-  await sb.from('customers').delete().eq('id',id);
+  const {error} = await sb.from('customers').delete().eq('id',id);
+  if(error) console.error('Müşteri silme hatası:',error);
 }
 
 // Eski save() → artık sync localStorage cache + async Supabase
@@ -874,7 +879,12 @@ async function loadFromSupabase(){
       S.customers = custRes.data.map(c=>({id:c.id,name:c.name,loc:c.loc,note:c.note}));
       S.records   = recRes.data.map(recFromDb);
     }
-    S.currentCid = S.customers[0].id;
+    // Son seçilen müşteriyi geri yükle; yoksa 'THY AO ECC (güncel)' veya ilk müşteriyi seç
+    const lastCid = localStorage.getItem('hl_last_cid');
+    const restoredCid = S.customers.find(c=>c.id===lastCid)?.id
+      || S.customers.find(c=>c.name.includes('ECC') || c.name.includes('güncel'))?.id
+      || S.customers[0]?.id;
+    S.currentCid = restoredCid;
     save(); // localStorage cache
   } catch(err){
     console.error('Supabase yükleme hatası:', err);
@@ -902,11 +912,15 @@ function showLoader(on){
 }
 
 function load(){
-  // Hızlı başlangıç için önce localStorage'dan yükle, sonra Supabase'i çek
   const r=localStorage.getItem('hl_v2');
   if(r){const d=JSON.parse(r);S.customers=d.customers||[];S.records=d.records||[];}
   if(!S.customers.length){S.customers=[{id:uid(),name:'Yükleniyor...',loc:'',note:''}];}
-  S.currentCid=S.customers[0].id;
+  // Son seçilen müşteriyi geri yükle; yoksa ECC/güncel veya ilk sıradaki
+  const lastCid = localStorage.getItem('hl_last_cid');
+  const restoredCid = S.customers.find(c=>c.id===lastCid)?.id
+    || S.customers.find(c=>c.name.includes('ECC') || c.name.includes('güncel'))?.id
+    || S.customers[0]?.id;
+  S.currentCid = restoredCid;
 }
 
 function seedData(cid){
@@ -952,6 +966,7 @@ function switchTab(t){
 function onCustomerChange(){
   S.currentCid=document.getElementById('customerSelect').value;
   S.page=1;
+  try{ localStorage.setItem('hl_last_cid', S.currentCid); }catch(e){}
   if(activeTab==='dashboard') renderDashboard();
   else if(activeTab==='grafikler') renderGrafiks();
   else if(activeTab==='veri') renderTable();
@@ -1122,7 +1137,16 @@ function exportTablePDF(){
     const toplamBlofTasarrufu = (r.refBlofFark!=null && r.hydroBlofFark!=null)
       ? r.refBlofFark - r.hydroBlofFark - (r.atiksuFark||0) : null;
     const toplamBlofTasarrufuYuzde = (toplamBlofTasarrufu!=null && r.refBlofFark) ? toplamBlofTasarrufu/r.refBlofFark : null;
+    const smK11 = (r.kule11SureFark&&r.kule11SureFark>0&&r.hydroTuketim!=null) ? +(r.hydroTuketim/r.kule11SureFark).toFixed(4) : null;
+    const smK12 = (r.kule12SureFark&&r.kule12SureFark>0&&r.refTuketim!=null) ? +(r.refTuketim/r.kule12SureFark).toFixed(4) : null;
+    const sbK11 = (r.kule11SureFark&&r.kule11SureFark>0&&r.hydroBlofFark!=null) ? +((r.hydroBlofFark+(r.atiksuFark||0))/r.kule11SureFark).toFixed(4) : null;
+    const sbK12 = (r.kule12SureFark&&r.kule12SureFark>0&&r.refBlofFark!=null) ? +(r.refBlofFark/r.kule12SureFark).toFixed(4) : null;
+    const makeupFark    = (smK11!=null&&smK12!=null) ? +(smK12-smK11).toFixed(4) : null;
+    const makeupFarkPct = (makeupFark!=null&&smK12&&smK12!==0) ? +(makeupFark/smK12*100).toFixed(2) : null;
+    const blofFarkV     = (sbK11!=null&&sbK12!=null) ? +(sbK12-sbK11).toFixed(4) : null;
+    const blofFarkVPct  = (blofFarkV!=null&&sbK12&&sbK12!==0) ? +(blofFarkV/sbK12*100).toFixed(2) : null;
     const kazancCls = (r.kazanc||0)>=0?'pos':'neg';
+    const pn = v => v!=null?(v>=0?'pos':'neg'):'';
     return `<tr>
       <td>${fmtD(r.tarih)}</td><td>${fmt(r.hydroSayac,4)}</td><td>${fmt(r.refSayac,4)}</td>
       <td>${fmt(r.hydroTuketim,4)}</td><td>${fmt(r.refTuketim,4)}</td>
@@ -1134,6 +1158,12 @@ function exportTablePDF(){
       <td>${fmt(r.atiksu,4)}</td><td class="grn">${fmt(r.atiksuFark,4)}</td>
       <td class="grn">${fmt(toplamBlofTasarrufu,4)}</td>
       <td class="grn">${toplamBlofTasarrufuYuzde!=null?(toplamBlofTasarrufuYuzde*100).toFixed(1)+'%':'-'}</td>
+      <td>${fmt(r.kule11SureFark,2)}</td><td>${fmt(r.kule12SureFark,2)}</td><td>${fmt(r.hydroSureFark,4)}</td>
+      <td class="grn">${fmt(smK11,4)}</td><td class="grn">${fmt(smK12,4)}</td>
+      <td class="${pn(makeupFark)}">${fmt(makeupFark,4)}</td><td class="${pn(makeupFarkPct)}">${makeupFarkPct!=null?makeupFarkPct+'%':'-'}</td>
+      <td class="grn">${fmt(sbK11,4)}</td><td class="grn">${fmt(sbK12,4)}</td>
+      <td class="${pn(blofFarkV)}">${fmt(blofFarkV,4)}</td><td class="${pn(blofFarkVPct)}">${blofFarkVPct!=null?blofFarkVPct+'%':'-'}</td>
+      <td>${r.aciklama||''}</td>
     </tr>`;
   }).join('');
 

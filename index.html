@@ -298,7 +298,11 @@ tbody td:first-child{color:var(--text);font-weight:500}
     </div>
     <div class="chart-card">
       <div class="chart-header">
-        <div><div class="chart-title">Çalışma Süreleri (Günlük Fark)</div><div class="chart-sub">Kule-11, Kule-12, Hydroloop (saat)</div></div>
+        <div>
+          <div class="chart-title">Çalışma Süreleri (Günlük Fark)</div>
+          <div class="chart-sub">Kule-11, Kule-12, Hydroloop (saat)</div>
+          <div id="dashRuntSummary" style="margin-top:5px"></div>
+        </div>
         <div class="chart-legend" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;flex:1;justify-content:center;padding:0 8px"></div>
         <div class="chart-type-btns" data-key="dashRunt"></div>
       </div>
@@ -1742,6 +1746,11 @@ function renderDashboard(){
       {label:'Hydroloop (saat)',data:rs.map(r=>r.hydroSureFark),  borderColor:'#0a8f63',backgroundColor:t.dashRunt==='bar'?'rgba(10,143,99,0.55)':'rgba(10,143,99,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3}
     ]},options:CO('dashRunt')});
 
+  window._dashRuntK11 = rs.map(r=>r.kule11SureFark);
+  window._dashRuntK12 = rs.map(r=>r.kule12SureFark);
+  window._dashRuntHydro = rs.map(r=>r.hydroSureFark);
+  updateDashRuntSummary(null);
+
   // Saatlik Makeup Verimi = Tüketim (ton) / Çalışma Süresi Fark (saat)
   // Sıfır veya null saat varsa null döndür (bölme hatası engellenir)
   const kule11MakeupSaatlik = rs.map(r=>{
@@ -2460,6 +2469,7 @@ function syncHighlight(groupKey, selIdx){
       updateKazancSummary(selIdx);
       updateSaatlikMakeupSummary(selIdx);
       updateSaatlikBlofSummary(selIdx);
+      updateDashRuntSummary(selIdx);
     }
   }
 }
@@ -3032,7 +3042,43 @@ function updateSaatlikBlofSummary(selIdx){
   </span>`;
 }
 
-// ── YEDEK AL / GERİ YÜKLE ────────────────────────────────
+// ── ÇALIŞMA SÜRESİ SAYACI ────────────────────────────────
+function updateDashRuntSummary(selIdx){
+  const el = document.getElementById('dashRuntSummary');
+  if(!el) return;
+  const k11  = window._dashRuntK11;
+  const k12  = window._dashRuntK12;
+  const hydro= window._dashRuntHydro;
+  if(!k11||!k12) return;
+
+  const sumV = arr => arr ? arr.filter(v=>v!=null).reduce((s,v)=>s+v,0) : 0;
+
+  let k11Val, k12Val, hydroVal, etiket;
+
+  if(selIdx !== null && selIdx !== undefined){
+    k11Val   = k11[selIdx];
+    k12Val   = k12[selIdx];
+    hydroVal = hydro?hydro[selIdx]:null;
+    etiket   = 'Günlük Çalışma';
+  } else {
+    k11Val   = sumV(k11);
+    k12Val   = sumV(k12);
+    hydroVal = sumV(hydro);
+    etiket   = 'Toplam Çalışma';
+  }
+
+  if(!k11Val && !k12Val && !hydroVal){ el.innerHTML=''; return; }
+
+  const f = v => v!=null ? v.toFixed(selIdx!=null?2:1)+' sa' : '-';
+
+  el.innerHTML = `<span style="font-size:11px;font-weight:700;color:#0077b6;background:#e8f4fd;border:1px solid #a0c8e8;border-radius:6px;padding:3px 10px;display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span>⏱ ${etiket}:</span>
+    <span style="color:#0077b6">K-11 <b>${f(k11Val)}</b></span>
+    <span style="color:var(--border)">|</span>
+    <span style="color:#6344b8">K-12 <b>${f(k12Val)}</b></span>
+    ${hydroVal!=null?`<span style="color:var(--border)">|</span><span style="color:#0a8f63">Hydroloop <b>${f(hydroVal)}</b></span>`:''}
+  </span>`;
+}
 function backupData(){
   const data = {
     version: 2,

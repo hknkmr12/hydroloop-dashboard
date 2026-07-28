@@ -659,31 +659,55 @@ tbody td:first-child{color:var(--text);font-weight:500}
 </div>
 
 <div class="modal-overlay" id="pdfExportModal">
-  <div class="modal" style="max-width:620px">
+  <div class="modal" style="max-width:680px">
     <button class="modal-close" onclick="closeModal('pdfExportModal')">✕</button>
     <div class="modal-title">📄 PDF Dışa Aktar</div>
 
     <!-- Tarih aralığı -->
-    <div style="background:var(--bg2);border-radius:10px;padding:14px;margin-bottom:16px">
-      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">Tarih Aralığı</div>
+    <div style="background:var(--bg2);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">📅 Tarih Aralığı</div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <input type="date" id="pdfDateStart" style="font-size:13px;padding:7px 11px;background:var(--card2);border:1px solid var(--border);border-radius:7px;color:var(--text)">
+        <input type="date" id="pdfDateStart" onchange="renderPdfMonths();renderPdfRecordList()" style="font-size:13px;padding:7px 11px;background:var(--card2);border:1px solid var(--border);border-radius:7px;color:var(--text)">
         <span style="color:var(--text3)">—</span>
-        <input type="date" id="pdfDateEnd" style="font-size:13px;padding:7px 11px;background:var(--card2);border:1px solid var(--border);border-radius:7px;color:var(--text)">
-        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('pdfDateStart').value='';document.getElementById('pdfDateEnd').value=''">Sıfırla</button>
+        <input type="date" id="pdfDateEnd" onchange="renderPdfMonths();renderPdfRecordList()" style="font-size:13px;padding:7px 11px;background:var(--card2);border:1px solid var(--border);border-radius:7px;color:var(--text)">
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('pdfDateStart').value='';document.getElementById('pdfDateEnd').value='';renderPdfMonths();renderPdfRecordList()">Sıfırla</button>
       </div>
+    </div>
+
+    <!-- Ay seçimi -->
+    <div style="background:var(--bg2);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">📆 Ay Seçimi</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="pdfSelectAllMonths(true)">Tümü</button>
+          <button class="btn btn-ghost btn-sm" onclick="pdfSelectAllMonths(false)">Hiçbiri</button>
+        </div>
+      </div>
+      <div id="pdfMonthCheckboxes" style="display:flex;flex-wrap:wrap;gap:7px"></div>
+    </div>
+
+    <!-- Kayıt seçimi -->
+    <div style="background:var(--bg2);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">📋 Kayıt Seçimi <span id="pdfRecordCount" style="font-weight:400;color:var(--text3);font-size:10px"></span></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="pdfSelectAllRecords(true)">Tümü</button>
+          <button class="btn btn-ghost btn-sm" onclick="pdfSelectAllRecords(false)">Hiçbiri</button>
+        </div>
+      </div>
+      <div id="pdfRecordList" style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
     </div>
 
     <!-- Sütun seçimi -->
     <div style="background:var(--bg2);border-radius:10px;padding:14px;margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">Sütunlar</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">🗂 Sütunlar</div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-ghost btn-sm" onclick="pdfSelectAll(true)">Tümünü Seç</button>
           <button class="btn btn-ghost btn-sm" onclick="pdfSelectAll(false)">Hiçbirini Seçme</button>
         </div>
       </div>
-      <div id="pdfColCheckboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:260px;overflow-y:auto;padding-right:4px"></div>
+      <div id="pdfColCheckboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:200px;overflow-y:auto;padding-right:4px"></div>
     </div>
 
     <div style="display:flex;gap:10px">
@@ -2161,7 +2185,6 @@ function computeRowExtras(r){
 }
 
 function openPdfModal(){
-  // Mevcut tablo filtresini al
   const period = document.getElementById('tablePeriod').value;
   let rs = recs(period);
   const fs = document.getElementById('filterStart').value;
@@ -2170,13 +2193,12 @@ function openPdfModal(){
   if(fe) rs = rs.filter(r=>r.tarih<=fe);
   rs.sort((a,b)=>a.tarih.localeCompare(b.tarih));
 
-  // Tarih alanlarını doldur
   if(rs.length){
     document.getElementById('pdfDateStart').value = rs[0].tarih;
     document.getElementById('pdfDateEnd').value   = rs[rs.length-1].tarih;
   }
 
-  // Sütun checkboxlarını oluştur
+  // Sütun checkboxları
   const el = document.getElementById('pdfColCheckboxes');
   el.innerHTML = TABLE_COLS.map(c=>{
     const lbl = c.custom ? customColLabel(c.key) : FL(c.key);
@@ -2186,27 +2208,80 @@ function openPdfModal(){
     </label>`;
   }).join('');
 
+  renderPdfMonths();
+  renderPdfRecordList();
   document.getElementById('pdfExportModal').classList.add('open');
 }
 
-function pdfSelectAll(checked){
-  document.querySelectorAll('.pdfColCheck').forEach(cb=>cb.checked=checked);
+function getPdfFilteredRecs(skipMonthFilter){
+  const s = document.getElementById('pdfDateStart').value;
+  const e = document.getElementById('pdfDateEnd').value;
+  let rs = recs('all').filter(r=>r.customerId===S.currentCid);
+  if(s) rs = rs.filter(r=>r.tarih>=s);
+  if(e) rs = rs.filter(r=>r.tarih<=e);
+  if(!skipMonthFilter){
+    const selMonths = [...document.querySelectorAll('.pdfMonthCheck:checked')].map(cb=>cb.dataset.month);
+    if(selMonths.length) rs = rs.filter(r=>selMonths.includes(r.tarih.slice(0,7)));
+  }
+  return rs.sort((a,b)=>a.tarih.localeCompare(b.tarih));
 }
+
+function renderPdfMonths(){
+  const rs = getPdfFilteredRecs(true);
+  const months = [...new Set(rs.map(r=>r.tarih.slice(0,7)))].sort();
+  const el = document.getElementById('pdfMonthCheckboxes');
+  if(!months.length){ el.innerHTML='<span style="font-size:12px;color:var(--text3)">Kayıt bulunamadı</span>'; return; }
+  const mn = {'01':'Ocak','02':'Şubat','03':'Mart','04':'Nisan','05':'Mayıs','06':'Haziran','07':'Temmuz','08':'Ağustos','09':'Eylül','10':'Ekim','11':'Kasım','12':'Aralık'};
+  el.innerHTML = months.map(m=>{
+    const [y,mo] = m.split('-');
+    const cnt = rs.filter(r=>r.tarih.startsWith(m)).length;
+    return `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:6px 12px;border-radius:20px;background:var(--card);border:1px solid var(--border)">
+      <input type="checkbox" class="pdfMonthCheck" data-month="${m}" checked style="accent-color:var(--primary)">
+      ${(mn[mo]||mo)+' '+y} <span style="font-size:10px;color:var(--text3)">(${cnt})</span>
+    </label>`;
+  }).join('');
+  el.querySelectorAll('.pdfMonthCheck').forEach(cb=>{ cb.onchange = renderPdfRecordList; });
+}
+
+function renderPdfRecordList(){
+  const rs = getPdfFilteredRecs(false);
+  const el = document.getElementById('pdfRecordList');
+  const cnt = document.getElementById('pdfRecordCount');
+  if(cnt) cnt.textContent = rs.length ? '— '+rs.length+' kayıt' : '';
+  if(!rs.length){ el.innerHTML='<span style="font-size:12px;color:var(--text3);padding:4px">Kayıt bulunamadı</span>'; return; }
+  el.innerHTML = rs.map(r=>{
+    const pct = (r.refTuketim&&r.refTuketim!==0&&r.kazanc!=null)?r.kazanc/r.refTuketim*100:null;
+    const col = pct!=null?(pct>=15?'#0a8f63':pct>=10?'#d97706':'#c8334e'):'#94a3b8';
+    const blofTas = (r.refBlofFark!=null&&r.hydroBlofFark!=null)?r.refBlofFark-r.hydroBlofFark-(r.atiksuFark||0):null;
+    const blofPct = (blofTas!=null&&r.refBlofFark)?blofTas/r.refBlofFark*100:null;
+    return `<label style="display:flex;align-items:center;gap:10px;font-size:11px;cursor:pointer;padding:5px 8px;border-radius:7px;background:var(--card);border:1px solid var(--border)">
+      <input type="checkbox" class="pdfRecCheck" data-id="${r.id}" checked style="accent-color:var(--primary);flex-shrink:0">
+      <span style="font-weight:600;min-width:54px">${fmtD(r.tarih)}</span>
+      <span style="color:var(--text3)">Ref <b>${fmt(r.refTuketim,2)}</b></span>
+      <span style="color:#0077b6">Hydro <b>${fmt(r.hydroTuketim,2)}</b></span>
+      <span style="color:${col};font-weight:700;min-width:42px">${pct!=null?'%'+pct.toFixed(1):'-'}</span>
+      ${blofPct!=null?`<span style="color:#6344b8;font-size:10px">Blöf %${blofPct.toFixed(1)}</span>`:''}
+      ${r.aciklama?`<span style="color:var(--text3);font-size:10px;margin-left:auto;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.aciklama}">📝 ${r.aciklama}</span>`:''}
+    </label>`;
+  }).join('');
+}
+
+function pdfSelectAll(checked){ document.querySelectorAll('.pdfColCheck').forEach(cb=>cb.checked=checked); }
+function pdfSelectAllMonths(checked){ document.querySelectorAll('.pdfMonthCheck').forEach(cb=>cb.checked=checked); renderPdfRecordList(); }
+function pdfSelectAllRecords(checked){ document.querySelectorAll('.pdfRecCheck').forEach(cb=>cb.checked=checked); }
 
 function sortTable(col){if(S.sortCol===col)S.sortDir*=-1;else{S.sortCol=col;S.sortDir=-1;}renderTable();}
 function clearFilters(){document.getElementById('filterStart').value='';document.getElementById('filterEnd').value='';document.getElementById('tablePeriod').value='all';renderTable();}
 function generatePDF(){
-  const startDate = document.getElementById('pdfDateStart').value;
-  const endDate   = document.getElementById('pdfDateEnd').value;
   const selectedKeys = [...document.querySelectorAll('.pdfColCheck:checked')].map(cb=>cb.dataset.key);
   if(!selectedKeys.length){ toast('En az bir sütun seçiniz','error'); return; }
 
-  // Veriyi filtrele
-  const period = document.getElementById('tablePeriod').value;
-  let rs = recs(period);
-  if(startDate) rs = rs.filter(r=>r.tarih>=startDate);
-  if(endDate)   rs = rs.filter(r=>r.tarih<=endDate);
-  rs.sort((a,b)=>a.tarih.localeCompare(b.tarih));
+  // Seçili kayıt ID'leri
+  const selectedIds = new Set([...document.querySelectorAll('.pdfRecCheck:checked')].map(cb=>cb.dataset.id));
+  if(!selectedIds.size){ toast('En az bir kayıt seçiniz','error'); return; }
+
+  // Sadece seçili kayıtları al (sıralı)
+  const rs = getPdfFilteredRecs(false).filter(r=>selectedIds.has(r.id));
 
   if(!rs.length){ toast('Seçilen aralıkta kayıt bulunamadı','error'); return; }
 
@@ -2277,7 +2352,7 @@ function generatePDF(){
   @media print{@page{size:A4 landscape;margin:5mm}html,body{height:auto}}
 </style></head><body>
 <h2>${custName} — Ölçüm Raporu</h2>
-<div class="meta">${startDate?fmtD(startDate):''} ${startDate&&endDate?'—':''} ${endDate?fmtD(endDate):''} &nbsp;•&nbsp; ${rs.length} kayıt &nbsp;•&nbsp; ${olusturma}</div>
+<div class="meta">${rs.length?fmtD(rs[0].tarih):''} ${rs.length>1?'— '+fmtD(rs[rs.length-1].tarih):''} &nbsp;•&nbsp; ${rs.length} kayıt &nbsp;•&nbsp; ${olusturma}</div>
 <table>
   <thead><tr>${headHTML}</tr></thead>
   <tbody>${bodyHTML}</tbody>

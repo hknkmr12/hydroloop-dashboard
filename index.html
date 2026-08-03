@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Hydroloop Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
@@ -436,6 +437,11 @@ tbody td:first-child{color:var(--text);font-weight:500}
       <div class="table-title">Ölçüm Kayıtları</div>
       <span class="badge badge-blue" id="tableCount"></span>
       <button class="btn btn-ghost btn-sm" onclick="openPdfModal()">📄 PDF İndir</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportExcel()" style="color:#217346">⬇ Excel İndir</button>
+      <label class="btn btn-ghost btn-sm" style="cursor:pointer;color:#217346" title="Excel dosyası yükle (.xlsx)">
+        ⬆ Excel Yükle
+        <input type="file" accept=".xlsx,.xls" onchange="importExcel(event)" style="display:none">
+      </label>
       <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="openModal('labelEditModal')">🏷️ Etiketleri Düzenle</button>
     </div>
     <div class="table-wrap"><table>
@@ -2278,6 +2284,225 @@ function renderPdfRecordList(){
 function pdfSelectAll(checked){ document.querySelectorAll('.pdfColCheck').forEach(cb=>cb.checked=checked); }
 function pdfSelectAllMonths(checked){ document.querySelectorAll('.pdfMonthCheck').forEach(cb=>cb.checked=checked); renderPdfRecordList(); }
 function pdfSelectAllRecords(checked){ document.querySelectorAll('.pdfRecCheck').forEach(cb=>cb.checked=checked); }
+
+// ── EXCEL İNDİR / YÜKLE ─────────────────────────────────
+
+// Excel sütun eşleştirme şeması — Excel başlığı → iç alan adı
+const EXCEL_COL_MAP = {
+  'Tarih':                    'tarih',
+  'Hydro Sayaç':              'hydroSayac',
+  'Ref. Sayaç':               'refSayac',
+  'Hydroloop Tüketim':        'hydroTuketim',
+  'Referans Kule Tüketim':    'refTuketim',
+  'Tasarruf':                 'kazanc',
+  'Tasarruf %':               'yuzdeKazanc',
+  'Hydro İletk.':             'hydroIletk',
+  'Ref. İletk.':              'refIletk',
+  'Hydro Blöf':               'hydroBlof',
+  'Ref. Blöf':                'refBlof',
+  'Hydro Blöf Farkı':         'hydroBlofFark',
+  'Ref. Blöf Farkı':          'refBlofFark',
+  'Üretim':                   'uretim',
+  'Üretim Farkı':             'uretimFark',
+  'Atıksu':                   'atiksu',
+  'Atıksu Farkı':             'atiksuFark',
+  'K-11 Süre Fark (sa)':      'kule11SureFark',
+  'K-12 Süre Fark (sa)':      'kule12SureFark',
+  'Hydroloop Süre Fark (sa)': 'hydroSureFark',
+  'Açıklama':                 'aciklama',
+};
+
+// Hesaplanmış (computed) sütunlar — yükleme sırasında atlanır, dashboard yeniden hesaplar
+const EXCEL_SKIP_IMPORT = new Set([
+  'yuzdeKazanc', // canlı hesaplanıyor
+  'Tasarruf %','Toplam Blöf Tasarrufu','Toplam Blöf Tasarrufu %',
+  'K-11 Makeup m³/sa','K-12 Makeup m³/sa','Makeup Verim Fark (m³/sa)','Makeup Verim Fark %',
+  'K-11 Blöf m³/sa','K-12 Blöf m³/sa','Blöf Verim Fark (m³/sa)','Blöf Verim Fark %',
+]);
+
+function exportExcel(){
+  if(!window.XLSX){ toast('SheetJS yüklenmedi, lütfen sayfayı yenileyin','error'); return; }
+
+  const period = document.getElementById('tablePeriod').value;
+  let rs = recs(period);
+  const fs = document.getElementById('filterStart').value;
+  const fe = document.getElementById('filterEnd').value;
+  if(fs) rs = rs.filter(r=>r.tarih>=fs);
+  if(fe) rs = rs.filter(r=>r.tarih<=fe);
+  rs.sort((a,b)=>a.tarih.localeCompare(b.tarih));
+
+  if(!rs.length){ toast('Dışa aktarılacak kayıt bulunamadı','error'); return; }
+
+  const cust = S.customers.find(c=>c.id===S.currentCid);
+
+  // Başlık satırı
+  const headers = [
+    'Tarih','Hydro Sayaç','Ref. Sayaç','Hydroloop Tüketim','Referans Kule Tüketim',
+    'Tasarruf','Tasarruf %','Hydro İletk.','Ref. İletk.',
+    'Hydro Blöf','Ref. Blöf','Hydro Blöf Farkı','Ref. Blöf Farkı',
+    'Üretim','Üretim Farkı','Atıksu','Atıksu Farkı',
+    'K-11 Süre Fark (sa)','K-12 Süre Fark (sa)','Hydroloop Süre Fark (sa)','Açıklama'
+  ];
+
+  const rows = rs.map(r=>{
+    const canliYuzde = (r.refTuketim&&r.refTuketim!==0&&r.kazanc!=null)?+(r.kazanc/r.refTuketim*100).toFixed(4):null;
+    return [
+      r.tarih, r.hydroSayac, r.refSayac, r.hydroTuketim, r.refTuketim,
+      r.kazanc, canliYuzde, r.hydroIletk, r.refIletk,
+      r.hydroBlof, r.refBlof, r.hydroBlofFark, r.refBlofFark,
+      r.uretim, r.uretimFark, r.atiksu, r.atiksuFark,
+      r.kule11SureFark, r.kule12SureFark, r.hydroSureFark, r.aciklama||''
+    ];
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+  // Sütun genişlikleri
+  ws['!cols'] = headers.map((h,i) => ({ wch: i===0?12:i===20?25:11 }));
+
+  // Tarih sütununu metin formatla (YYYY-MM-DD korunsun)
+  for(let i=1;i<=rows.length;i++){
+    const cell = ws[XLSX.utils.encode_cell({r:i,c:0})];
+    if(cell){ cell.t='s'; }
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Veriler');
+
+  // Meta veri sayfası — yükleme şeması için
+  const metaWs = XLSX.utils.aoa_to_sheet([
+    ['Alan','Açıklama','Format'],
+    ['tarih','Tarih (zorunlu)','YYYY-MM-DD (örn: 2026-06-15)'],
+    ['hydroSayac','Hydro Kule Sayaç','Sayı (kümülatif m³)'],
+    ['refSayac','Ref. Kule Sayaç','Sayı (kümülatif m³)'],
+    ['hydroTuketim','Hydroloop Günlük Tüketim','Sayı (ton)'],
+    ['refTuketim','Referans Kule Günlük Tüketim','Sayı (ton)'],
+    ['kazanc','Tasarruf (ton)','Sayı — otomatik: refTuketim-hydroTuketim'],
+    ['hydroIletk','Hydro İletkenlik','Sayı (µS/cm)'],
+    ['refIletk','Ref. İletkenlik','Sayı (µS/cm)'],
+    ['hydroBlof','Hydro Blöf Sayaç','Sayı (kümülatif ton)'],
+    ['refBlof','Ref. Blöf Sayaç','Sayı (kümülatif ton)'],
+    ['hydroBlofFark','Hydro Blöf Günlük Artış','Sayı (ton)'],
+    ['refBlofFark','Ref. Blöf Günlük Artış','Sayı (ton)'],
+    ['uretim','Üretim Sayaç','Sayı (kümülatif)'],
+    ['uretimFark','Üretim Günlük Artış','Sayı'],
+    ['atiksu','Atıksu Sayaç','Sayı (kümülatif ton)'],
+    ['atiksuFark','Atıksu Günlük Artış','Sayı (ton)'],
+    ['kule11SureFark','K-11 Süre Fark','Sayı (saat)'],
+    ['kule12SureFark','K-12 Süre Fark','Sayı (saat)'],
+    ['hydroSureFark','Hydroloop Süre Fark','Sayı (saat)'],
+    ['aciklama','Açıklama/Not','Metin (isteğe bağlı)'],
+  ]);
+  metaWs['!cols'] = [{wch:20},{wch:30},{wch:35}];
+  XLSX.utils.book_append_sheet(wb, metaWs, 'Şema');
+
+  const custName = (cust?.name||'Hydroloop').replace(/[^a-zA-Z0-9_\-ğüşöçıİĞÜŞÖÇ ]/g,'');
+  const tarih = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `${custName}_${tarih}.xlsx`);
+  toast('Excel dosyası indirildi ✓');
+}
+
+async function importExcel(event){
+  if(!window.XLSX){ toast('SheetJS yüklenmedi','error'); return; }
+  const file = event.target.files[0];
+  if(!file){ return; }
+  event.target.value=''; // reset
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try{
+      showLoader(true);
+      const data = new Uint8Array(e.target.result);
+      const wb   = XLSX.read(data, {type:'array'});
+
+      // İlk sayfayı oku (Şema sayfasını atla)
+      const sheetName = wb.SheetNames.find(n=>n!=='Şema') || wb.SheetNames[0];
+      const ws   = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:null, raw:false});
+
+      if(!rows.length){ toast('Excel dosyası boş veya okunamadı','error'); showLoader(false); return; }
+
+      // Sütun başlıklarını kontrol et
+      const firstRow = rows[0];
+      const hasTarih = 'Tarih' in firstRow || 'tarih' in firstRow;
+      if(!hasTarih){ toast('Hata: "Tarih" sütunu bulunamadı. Lütfen indirilen şablonu kullanın.','error'); showLoader(false); return; }
+
+      if(!confirm(`${rows.length} satır yüklenecek. Mevcut kayıtlar güncellenir (aynı tarihler üzerine yazılır), silinmez. Devam edilsin mi?`)){
+        showLoader(false); return;
+      }
+
+      let eklenen=0, guncellenen=0, hatali=0;
+      const yeniKayitlar = [];
+
+      for(const row of rows){
+        // Tarih al (Tarih veya tarih başlığı)
+        const tarih = (row['Tarih']||row['tarih']||'').toString().trim();
+        if(!tarih || !/^\d{4}-\d{2}-\d{2}$/.test(tarih)){
+          hatali++; continue;
+        }
+
+        // Aynı müşteri + tarihte mevcut kayıt var mı?
+        const mevcut = S.records.find(r=>r.customerId===S.currentCid && r.tarih===tarih);
+
+        const rec = mevcut ? {...mevcut} : {
+          id:uid(), customerId:S.currentCid, tarih
+        };
+
+        // Excel başlıklarını iç alanlara eşleştir
+        for(const [excelCol, fieldName] of Object.entries(EXCEL_COL_MAP)){
+          if(EXCEL_SKIP_IMPORT.has(excelCol)) continue;
+          if(fieldName==='tarih') continue;
+          const val = row[excelCol] ?? row[fieldName] ?? null;
+          if(val===null||val==='') { rec[fieldName]=null; continue; }
+          if(fieldName==='aciklama'){
+            rec[fieldName] = String(val);
+          } else {
+            const n = parseFloat(String(val).replace(',','.'));
+            rec[fieldName] = isNaN(n)?null:n;
+          }
+        }
+
+        // kazanc yoksa refTuketim-hydroTuketim'den hesapla
+        if(rec.kazanc==null && rec.refTuketim!=null && rec.hydroTuketim!=null){
+          rec.kazanc = +(rec.refTuketim - rec.hydroTuketim).toFixed(4);
+        }
+
+        if(mevcut){
+          const idx = S.records.findIndex(r=>r.id===mevcut.id);
+          S.records[idx] = rec; guncellenen++;
+        } else {
+          S.records.push(rec); eklenen++;
+        }
+        yeniKayitlar.push(rec);
+      }
+
+      // localStorage'ı güncelle
+      save();
+
+      // Supabase'e yaz (50'lik chunk'lar)
+      const CHUNK=50;
+      for(let i=0;i<yeniKayitlar.length;i+=CHUNK){
+        const chunk=yeniKayitlar.slice(i,i+CHUNK);
+        const {error} = await sb.from('records').upsert(chunk.map(recToDb));
+        if(error){ console.error('Supabase upsert hatası:',error); }
+      }
+
+      // Arayüzü yenile
+      if(activeTab==='dashboard') renderDashboard();
+      else if(activeTab==='grafikler') renderGrafiks();
+      else if(activeTab==='veri') renderTable();
+
+      const msg = `✓ ${eklenen} yeni kayıt eklendi, ${guncellenen} güncellendi${hatali>0?', '+hatali+' satır atlandı (tarih formatı)':''}`;
+      toast(msg);
+    }catch(err){
+      console.error('Excel yükleme hatası:',err);
+      toast('Excel okunamadı: '+err.message,'error');
+    } finally {
+      showLoader(false);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
 
 function sortTable(col){if(S.sortCol===col)S.sortDir*=-1;else{S.sortCol=col;S.sortDir=-1;}renderTable();}
 function clearFilters(){document.getElementById('filterStart').value='';document.getElementById('filterEnd').value='';document.getElementById('tablePeriod').value='all';renderTable();}

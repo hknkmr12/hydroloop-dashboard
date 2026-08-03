@@ -2335,33 +2335,60 @@ function exportExcel(){
 
   const cust = S.customers.find(c=>c.id===S.currentCid);
 
-  // Başlık satırı
-  const headers = [
-    'Tarih','Hydro Sayaç','Ref. Sayaç','Hydroloop Tüketim','Referans Kule Tüketim',
-    'Tasarruf','Tasarruf %','Hydro İletk.','Ref. İletk.',
-    'Hydro Blöf','Ref. Blöf','Hydro Blöf Farkı','Ref. Blöf Farkı',
-    'Üretim','Üretim Farkı','Atıksu','Atıksu Farkı',
-    'K-11 Süre Fark (sa)','K-12 Süre Fark (sa)','Hydroloop Süre Fark (sa)','Açıklama'
+  // Başlık sırası — TABLE_COLS ile birebir aynı sırada
+  const COL_DEFS = [
+    {h:'Tarih',            k:'tarih',                    raw:true},
+    {h:'Hydro Sayaç',      k:'hydroSayac'},
+    {h:'Ref. Sayaç',       k:'refSayac'},
+    {h:'Hydroloop Tüketim',k:'hydroTuketim'},
+    {h:'Referans Kule Tüketim',k:'refTuketim'},
+    {h:'Tasarruf',         k:'kazanc'},
+    {h:'Tasarruf %',       k:'yuzdeKazanc'},
+    {h:'Hydro İletk.',     k:'hydroIletk'},
+    {h:'Ref. İletk.',      k:'refIletk'},
+    {h:'Hydro Blöf',       k:'hydroBlof'},
+    {h:'Ref. Blöf',        k:'refBlof'},
+    {h:'Hydro Blöf Farkı', k:'hydroBlofFark'},
+    {h:'Ref. Blöf Farkı',  k:'refBlofFark'},
+    {h:'Üretim',           k:'uretim'},
+    {h:'Üretim Farkı',     k:'uretimFark'},
+    {h:'Atıksu',           k:'atiksu'},
+    {h:'Atıksu Farkı',     k:'atiksuFark'},
+    {h:'Toplam Blöf Tasarrufu',  k:'toplamBlofTasarrufu'},
+    {h:'Toplam Blöf Tasarrufu %',k:'toplamBlofTasarrufuYuzde'},
+    {h:'K-11 Süre Fark (sa)',    k:'kule11SureFark'},
+    {h:'K-12 Süre Fark (sa)',    k:'kule12SureFark'},
+    {h:'Hydroloop Süre Fark (sa)',k:'hydroSureFark'},
+    {h:'K-11 Makeup m³/sa',      k:'saatlikMakeupK11'},
+    {h:'K-12 Makeup m³/sa',      k:'saatlikMakeupK12'},
+    {h:'Makeup Verim Fark (m³/sa)',k:'makeupVerimFark'},
+    {h:'Makeup Verim Fark %',    k:'makeupVerimFarkPct'},
+    {h:'K-11 Blöf m³/sa',        k:'saatlikBlofK11'},
+    {h:'K-12 Blöf m³/sa',        k:'saatlikBlofK12'},
+    {h:'Blöf Verim Fark (m³/sa)',k:'blofVerimFark'},
+    {h:'Blöf Verim Fark %',      k:'blofVerimFarkPct'},
+    {h:'Açıklama',               k:'aciklama', raw:true},
   ];
 
-  const rows = rs.map(r=>{
-    const canliYuzde = (r.refTuketim&&r.refTuketim!==0&&r.kazanc!=null)?+(r.kazanc/r.refTuketim*100).toFixed(4):null;
-    return [
-      r.tarih, r.hydroSayac, r.refSayac, r.hydroTuketim, r.refTuketim,
-      r.kazanc, canliYuzde, r.hydroIletk, r.refIletk,
-      r.hydroBlof, r.refBlof, r.hydroBlofFark, r.refBlofFark,
-      r.uretim, r.uretimFark, r.atiksu, r.atiksuFark,
-      r.kule11SureFark, r.kule12SureFark, r.hydroSureFark, r.aciklama||''
-    ];
+  const headers = COL_DEFS.map(c=>c.h);
+
+  const dataRows = rs.map(r=>{
+    const v = computeRowExtras(r); // tüm hesaplanmış değerler dahil
+    return COL_DEFS.map(c=>{
+      const val = v[c.k];
+      if(c.raw) return val; // tarih ve açıklama metin olarak
+      if(val==null||val==='') return '';
+      return typeof val==='number' ? val : parseFloat(val)||val;
+    });
   });
 
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
 
   // Sütun genişlikleri
-  ws['!cols'] = headers.map((h,i) => ({ wch: i===0?12:i===20?25:11 }));
+  ws['!cols'] = COL_DEFS.map(c=>({ wch: c.k==='tarih'?12:c.k==='aciklama'?25:14 }));
 
-  // Tarih sütununu metin formatla (YYYY-MM-DD korunsun)
-  for(let i=1;i<=rows.length;i++){
+  // Tarih sütununun metin olarak kaldığından emin ol
+  for(let i=1;i<=dataRows.length;i++){
     const cell = ws[XLSX.utils.encode_cell({r:i,c:0})];
     if(cell){ cell.t='s'; }
   }
@@ -2369,37 +2396,25 @@ function exportExcel(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Veriler');
 
-  // Meta veri sayfası — yükleme şeması için
-  const metaWs = XLSX.utils.aoa_to_sheet([
-    ['Alan','Açıklama','Format'],
-    ['tarih','Tarih (zorunlu)','YYYY-MM-DD (örn: 2026-06-15)'],
-    ['hydroSayac','Hydro Kule Sayaç','Sayı (kümülatif m³)'],
-    ['refSayac','Ref. Kule Sayaç','Sayı (kümülatif m³)'],
-    ['hydroTuketim','Hydroloop Günlük Tüketim','Sayı (ton)'],
-    ['refTuketim','Referans Kule Günlük Tüketim','Sayı (ton)'],
-    ['kazanc','Tasarruf (ton)','Sayı — otomatik: refTuketim-hydroTuketim'],
-    ['hydroIletk','Hydro İletkenlik','Sayı (µS/cm)'],
-    ['refIletk','Ref. İletkenlik','Sayı (µS/cm)'],
-    ['hydroBlof','Hydro Blöf Sayaç','Sayı (kümülatif ton)'],
-    ['refBlof','Ref. Blöf Sayaç','Sayı (kümülatif ton)'],
-    ['hydroBlofFark','Hydro Blöf Günlük Artış','Sayı (ton)'],
-    ['refBlofFark','Ref. Blöf Günlük Artış','Sayı (ton)'],
-    ['uretim','Üretim Sayaç','Sayı (kümülatif)'],
-    ['uretimFark','Üretim Günlük Artış','Sayı'],
-    ['atiksu','Atıksu Sayaç','Sayı (kümülatif ton)'],
-    ['atiksuFark','Atıksu Günlük Artış','Sayı (ton)'],
-    ['kule11SureFark','K-11 Süre Fark','Sayı (saat)'],
-    ['kule12SureFark','K-12 Süre Fark','Sayı (saat)'],
-    ['hydroSureFark','Hydroloop Süre Fark','Sayı (saat)'],
-    ['aciklama','Açıklama/Not','Metin (isteğe bağlı)'],
-  ]);
-  metaWs['!cols'] = [{wch:20},{wch:30},{wch:35}];
+  // Şema sayfası
+  const metaRows = [
+    ['Başlık','Alan Adı','Açıklama','Format'],
+    ...COL_DEFS.map(c=>[
+      c.h, c.k,
+      c.k==='tarih'?'Tarih (zorunlu)':
+      c.k==='aciklama'?'Açıklama/Not (isteğe bağlı)':
+      ['yuzdeKazanc','toplamBlofTasarrufu','toplamBlofTasarrufuYuzde','saatlikMakeupK11','saatlikMakeupK12','makeupVerimFark','makeupVerimFarkPct','saatlikBlofK11','saatlikBlofK12','blofVerimFark','blofVerimFarkPct'].includes(c.k)?'Hesaplanmış — yükleme sırasında göz ardı edilir':'Girilebilir alan',
+      c.k==='tarih'?'YYYY-MM-DD':c.k==='aciklama'?'Metin':'Sayı'
+    ])
+  ];
+  const metaWs = XLSX.utils.aoa_to_sheet(metaRows);
+  metaWs['!cols'] = [{wch:28},{wch:26},{wch:42},{wch:16}];
   XLSX.utils.book_append_sheet(wb, metaWs, 'Şema');
 
-  const custName = (cust?.name||'Hydroloop').replace(/[^a-zA-Z0-9_\-ğüşöçıİĞÜŞÖÇ ]/g,'');
-  const tarih = new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb, `${custName}_${tarih}.xlsx`);
-  toast('Excel dosyası indirildi ✓');
+  const custName = (cust?.name||'Hydroloop').replace(/[/\\?*:[\]]/g,'');
+  const tarihStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `${custName}_${tarihStr}.xlsx`);
+  toast(`Excel indirildi — ${rs.length} kayıt, ${COL_DEFS.length} sütun ✓`);
 }
 
 async function importExcel(event){

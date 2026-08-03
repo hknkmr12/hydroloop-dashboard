@@ -2413,7 +2413,12 @@ function exportExcel(){
 
   const custName = (cust?.name||'Hydroloop').replace(/[/\\?*:[\]]/g,'');
   const tarihStr = new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb, `${custName}_${tarihStr}.xlsx`);
+  // bookType ve compression ayarları — şifre/koruma yok, düzenlenebilir
+  XLSX.writeFile(wb, `${custName}_${tarihStr}.xlsx`, {
+    bookType: 'xlsx',
+    compression: false,
+    bookSST: false,
+  });
   toast(`Excel indirildi — ${rs.length} kayıt, ${COL_DEFS.length} sütun ✓`);
 }
 
@@ -2433,16 +2438,49 @@ async function importExcel(event){
       // İlk sayfayı oku (Şema sayfasını atla)
       const sheetName = wb.SheetNames.find(n=>n!=='Şema') || wb.SheetNames[0];
       const ws   = wb.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(ws, {defval:null, raw:false});
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:null, raw:true}); // raw:true → tarihleri sayı olarak alır
 
       if(!rows.length){ toast('Excel dosyası boş veya okunamadı','error'); showLoader(false); return; }
+
+      // Tarih normalleştirici — Excel'in farklı formatlarını YYYY-MM-DD'ye çevirir
+      function normalizeTarih(val){
+        if(val==null||val==='') return null;
+        // Excel serial number (sayısal tarih) → JS Date
+        if(typeof val==='number'){
+          // Excel'in epoch'u 1900-01-01, JS'in 1970-01-01
+          const excelEpoch = new Date(1899, 11, 30);
+          const d = new Date(excelEpoch.getTime() + val * 86400000);
+          return d.toISOString().slice(0,10);
+        }
+        const s = String(val).trim();
+        // YYYY-MM-DD (zaten doğru)
+        if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        // DD.MM.YYYY veya DD/MM/YYYY
+        const m1 = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/);
+        if(m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+        // YYYY.MM.DD
+        const m2 = s.match(/^(\d{4})[.\/-](\d{1,2})[.\/-](\d{1,2})$/);
+        if(m2) return `${m2[1]}-${m2[2].padStart(2,'0')}-${m2[3].padStart(2,'0')}`;
+        // MM/DD/YYYY (ABD formatı)
+        const m3 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if(m3){
+          // Eğer ilk kısım 12'den büyükse gün, değilse ay olabilir — YYYY-MM-DD varsay
+          const a=parseInt(m3[1]),b=parseInt(m3[2]);
+          if(a>12) return `${m3[3]}-${m3[2].padStart(2,'0')}-${m3[1].padStart(2,'0')}`;
+          return `${m3[3]}-${m3[1].padStart(2,'0')}-${m3[2].padStart(2,'0')}`;
+        }
+        return null;
+      }
 
       // Sütun başlıklarını kontrol et
       const firstRow = rows[0];
       const hasTarih = 'Tarih' in firstRow || 'tarih' in firstRow;
       if(!hasTarih){ toast('Hata: "Tarih" sütunu bulunamadı. Lütfen indirilen şablonu kullanın.','error'); showLoader(false); return; }
 
-      if(!confirm(`${rows.length} satır yüklenecek. Mevcut kayıtlar güncellenir (aynı tarihler üzerine yazılır), silinmez. Devam edilsin mi?`)){
+      const cust2 = S.customers.find(c=>c.id===S.currentCid);
+      const custName2 = cust2?.name || 'Seçili müşteri';
+
+      if(!confirm(`"${custName2}" müşterisine ${rows.length} satır yüklenecek.\n\nMevcut kayıtlar güncellenir (aynı tarihler üzerine yazılır), silinmez.\nDiğer müşterilerin verilerine dokunulmaz.\n\nDevam edilsin mi?`)){
         showLoader(false); return;
       }
 
@@ -2451,10 +2489,8 @@ async function importExcel(event){
 
       for(const row of rows){
         // Tarih al (Tarih veya tarih başlığı)
-        const tarih = (row['Tarih']||row['tarih']||'').toString().trim();
-        if(!tarih || !/^\d{4}-\d{2}-\d{2}$/.test(tarih)){
-          hatali++; continue;
-        }
+        const tarih = normalizeTarih(row['Tarih'] ?? row['tarih']);
+        if(!tarih){ hatali++; continue; }
 
         // Aynı müşteri + tarihte mevcut kayıt var mı?
         const mevcut = S.records.find(r=>r.customerId===S.currentCid && r.tarih===tarih);
@@ -2470,10 +2506,11 @@ async function importExcel(event){
           const val = row[excelCol] ?? row[fieldName] ?? null;
           if(val===null||val==='') { rec[fieldName]=null; continue; }
           if(fieldName==='aciklama'){
-            rec[fieldName] = String(val);
+            rec[fieldName] = val!=null ? String(val) : null;
           } else {
-            const n = parseFloat(String(val).replace(',','.'));
-            rec[fieldName] = isNaN(n)?null:n;
+            // raw:true modunda sayılar zaten number, string ise parse et
+            const n = typeof val==='number' ? val : parseFloat(String(val).replace(',','.'));
+            rec[fieldName] = isNaN(n) ? null : n;
           }
         }
 

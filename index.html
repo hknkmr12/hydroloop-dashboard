@@ -2445,30 +2445,23 @@ async function importExcel(event){
       // Tarih normalleştirici — Excel'in farklı formatlarını YYYY-MM-DD'ye çevirir
       function normalizeTarih(val){
         if(val==null||val==='') return null;
-        // Excel serial number (sayısal tarih) → JS Date
+        // Excel serial number (sayısal tarih) → YYYY-MM-DD
+        // UTC kullanarak saat dilimi kaymasını önle
         if(typeof val==='number'){
-          // Excel'in epoch'u 1900-01-01, JS'in 1970-01-01
-          const excelEpoch = new Date(1899, 11, 30);
-          const d = new Date(excelEpoch.getTime() + val * 86400000);
+          // Excel epoch: 1 = 1900-01-01. 60 atlanır (Excel'in 1900 yılı hatası)
+          const d = new Date(Date.UTC(1899, 11, 30) + Math.round(val) * 86400000);
           return d.toISOString().slice(0,10);
         }
         const s = String(val).trim();
+        if(!s) return null;
         // YYYY-MM-DD (zaten doğru)
         if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-        // DD.MM.YYYY veya DD/MM/YYYY
+        // DD.MM.YYYY veya DD/MM/YYYY veya DD-MM-YYYY
         const m1 = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/);
         if(m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
-        // YYYY.MM.DD
+        // YYYY.MM.DD veya YYYY/MM/DD
         const m2 = s.match(/^(\d{4})[.\/-](\d{1,2})[.\/-](\d{1,2})$/);
         if(m2) return `${m2[1]}-${m2[2].padStart(2,'0')}-${m2[3].padStart(2,'0')}`;
-        // MM/DD/YYYY (ABD formatı)
-        const m3 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        if(m3){
-          // Eğer ilk kısım 12'den büyükse gün, değilse ay olabilir — YYYY-MM-DD varsay
-          const a=parseInt(m3[1]),b=parseInt(m3[2]);
-          if(a>12) return `${m3[3]}-${m3[2].padStart(2,'0')}-${m3[1].padStart(2,'0')}`;
-          return `${m3[3]}-${m3[1].padStart(2,'0')}-${m3[2].padStart(2,'0')}`;
-        }
         return null;
       }
 
@@ -2488,7 +2481,10 @@ async function importExcel(event){
       const yeniKayitlar = [];
 
       for(const row of rows){
-        // Tarih al (Tarih veya tarih başlığı)
+        // Tamamen boş satırları atla
+        const rowVals = Object.values(row).filter(v=>v!=null&&v!=='');
+        if(!rowVals.length) continue;
+
         const tarih = normalizeTarih(row['Tarih'] ?? row['tarih']);
         if(!tarih){ hatali++; continue; }
 
@@ -2504,7 +2500,8 @@ async function importExcel(event){
           if(EXCEL_SKIP_IMPORT.has(excelCol)) continue;
           if(fieldName==='tarih') continue;
           const val = row[excelCol] ?? row[fieldName] ?? null;
-          if(val===null||val==='') { rec[fieldName]=null; continue; }
+          // boş string → null
+          if(val===null||val===''){ rec[fieldName]=null; continue; }
           if(fieldName==='aciklama'){
             rec[fieldName] = val!=null ? String(val) : null;
           } else {

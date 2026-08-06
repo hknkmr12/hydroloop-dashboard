@@ -6,6 +6,16 @@
 <title>Hydroloop Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// SheetJS CDN yüklenmezse fallback
+window.addEventListener('load', () => {
+  if(!window.XLSX) {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+    document.head.appendChild(s);
+  }
+});
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
@@ -1852,7 +1862,7 @@ function renderDashboard(){
   dc('dashRunt');S.charts['dashRunt']=new Chart(document.getElementById('chartDashRunt'),{
     type:t.dashRunt,data:{labels,datasets:[
       {label:'Kule-11 (saat)',  data:rs.map(r=>r.kule11SureFark), borderColor:'#0077b6',backgroundColor:t.dashRunt==='bar'?'rgba(0,119,182,0.55)':'rgba(0,119,182,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3},
-      {label:'Kule-12 (saat)',  data:rs.map(r=>r.kule12SureFark), borderColor:'#6344b8',backgroundColor:t.dashRunt==='bar'?'rgba(99,68,184,0.55)':'rgba(99,68,184,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3},
+      {label:'Kule-12 (saat)',  data:rs.map(r=>r.kule12SureFark), borderColor:'#c8334e',backgroundColor:t.dashRunt==='bar'?'rgba(200,51,78,0.55)':'rgba(200,51,78,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3},
       {label:'Hydroloop (saat)',data:rs.map(r=>r.hydroSureFark),  borderColor:'#0a8f63',backgroundColor:t.dashRunt==='bar'?'rgba(10,143,99,0.55)':'rgba(10,143,99,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3}
     ]},options:CO('dashRunt')});
 
@@ -2438,7 +2448,24 @@ async function importExcel(event){
       // İlk sayfayı oku (Şema sayfasını atla)
       const sheetName = wb.SheetNames.find(n=>n!=='Şema') || wb.SheetNames[0];
       const ws   = wb.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(ws, {defval:null, raw:true}); // raw:true → tarihleri sayı olarak alır
+      // Her iki modda oku, hangisi daha iyi çalışıyorsa kullan
+      const rowsRaw = XLSX.utils.sheet_to_json(ws, {defval:null, raw:true});
+      const rowsStr = XLSX.utils.sheet_to_json(ws, {defval:null, raw:false, dateNF:'yyyy-mm-dd'});
+
+      // Tarih için en iyi modu belirle
+      function testTarih(val){
+        if(val==null||val==='') return false;
+        if(typeof val==='number') return true; // serial
+        const s = String(val).trim();
+        return /^\d{4}-\d{2}-\d{2}$/.test(s) ||
+               /^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/.test(s) ||
+               /^(\d{4})[.\/-](\d{1,2})[.\/-](\d{1,2})$/.test(s);
+      }
+      const rawOk  = rowsRaw.filter(r=>r!=null).filter(r=>testTarih(r['Tarih']??r['tarih'])).length;
+      const strOk  = rowsStr.filter(r=>r!=null).filter(r=>testTarih(r['Tarih']??r['tarih'])).length;
+      const rows   = rawOk >= strOk ? rowsRaw : rowsStr;
+
+      console.log(`[Import] raw:true=${rawOk} raw:false=${strOk} → ${rawOk>=strOk?'raw':'str'} modu seçildi, ${rows.length} satır`);
 
       if(!rows.length){ toast('Excel dosyası boş veya okunamadı','error'); showLoader(false); return; }
 
@@ -3175,7 +3202,7 @@ function renderSingleDashChart(key){
         type: t.dashRunt,
         datasets:[
           {label:'Kule-11 (saat)',  data:rs.map(r=>r.kule11SureFark), borderColor:'#0077b6',backgroundColor:t.dashRunt==='bar'?'rgba(0,119,182,0.55)':'rgba(0,119,182,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3},
-          {label:'Kule-12 (saat)',  data:rs.map(r=>r.kule12SureFark), borderColor:'#6344b8',backgroundColor:t.dashRunt==='bar'?'rgba(99,68,184,0.55)':'rgba(99,68,184,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3},
+          {label:'Kule-12 (saat)',  data:rs.map(r=>r.kule12SureFark), borderColor:'#c8334e',backgroundColor:t.dashRunt==='bar'?'rgba(200,51,78,0.55)':'rgba(200,51,78,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3},
           {label:'Hydroloop (saat)',data:rs.map(r=>r.hydroSureFark),  borderColor:'#0a8f63',backgroundColor:t.dashRunt==='bar'?'rgba(10,143,99,0.55)':'rgba(10,143,99,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3}
         ]};
       case 'saatlikMakeup': return {
@@ -4038,7 +4065,7 @@ function buildDatasets(key, rs, typ){
       ]};}
     case 'dashRunt': return {type:typ, datasets:[
       {label:'Kule-11 (saat)',data:rs.map(r=>r.kule11SureFark),borderColor:'#0077b6',backgroundColor:typ==='bar'?'rgba(0,119,182,0.55)':'rgba(0,119,182,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3},
-      {label:'Kule-12 (saat)',data:rs.map(r=>r.kule12SureFark),borderColor:'#6344b8',backgroundColor:typ==='bar'?'rgba(99,68,184,0.55)':'rgba(99,68,184,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3},
+      {label:'Kule-12 (saat)',data:rs.map(r=>r.kule12SureFark),borderColor:'#c8334e',backgroundColor:typ==='bar'?'rgba(200,51,78,0.55)':'rgba(200,51,78,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3},
       {label:'Hydroloop (saat)',data:rs.map(r=>r.hydroSureFark),borderColor:'#0a8f63',backgroundColor:typ==='bar'?'rgba(10,143,99,0.55)':'rgba(10,143,99,0.08)',tension:.3,pointRadius:3,fill:false,borderRadius:3}
     ]};
     case 'saatlikMakeup': return {type:typ, datasets:[
